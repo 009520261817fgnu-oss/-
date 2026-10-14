@@ -11,6 +11,17 @@
 - 難易度：練習・通常・職人
 - 魚種データ（形状パラメータ・ヒレ・工程・解説）は `FISH_SPECS` にまとめてあり、同じ構造で魚を追加できます。
 
+## 3D観察台（試作）
+
+`sanmai-3d.html` … Three.js 0.170.0（import map で CDN から読み込み、ビルド不要）による3Dの観察用プロトタイプ。
+
+- 2D版と同じ魚の形の関数（`makeBody`）から3Dモデルを生成（外部のモデルファイルは使わない）。魚はまな板に片側を下にして寝かせた向き
+- マウス・タッチでの回転／拡大縮小／平行移動、視点プリセット、初期状態に戻す
+- 学習表示：中骨と骨格、半透明、三枚おろしの切る線、部位の名前。魚をタップすると部位の説明
+- 読み込み中の表示、Three.js を読み込めない場合・WebGL が使えない場合・描画が中断された場合のエラー画面
+- 内部の役割分担：`SceneManager`（描画・照明・サイズ追従）、`CameraController`（OrbitControls と視点）、`ModelManager`（モデル生成と破棄）、`LearningState`（表示状態）、`ProgressStore`（表示設定を localStorage に記憶）、`UIController`（ボタン・ラベル・説明）
+- 未対応：3Dでの切る操作、2D版とのデータ共有（魚種データは現在2つのファイルに同じ値を持っている）
+
 ## テスト
 
 `tests/play-2d.js` は Playwright で主要な操作の流れを自動で通すテストです（CDN の読み込みはローカルファイルに差し替え）。
@@ -20,4 +31,10 @@ LIBS_DIR=<react.production.min.js / react-dom.production.min.js / htm.umd.js を
 FISH=aji MODE=practice SCEN=full node tests/play-2d.js
 ```
 
-`SCEN` は `full`（通し）・`sever`（切断で失敗）・`damage`（切り傷で失敗）・`handcut`（手を切って失敗）・`order`（順序違い）・`spike`（タイの棘）。
+`tests/check-3d.js` は3D観察台の確認テストです（表示、回転、ホイール／ピンチでの拡大、表示切り替え、部位の選択、魚の切り替え時のメモリ、リセット、画面サイズ変更、描画負荷。`BLOCK_THREE=1` で読み込み失敗時のエラー画面）。
+
+```
+THREE_DIR=<three@0.170.0 パッケージのフォルダ> node tests/check-3d.js
+```
+
+2D版の `SCEN` は `full`（通し）・`sever`（切断で失敗）・`damage`（切り傷で失敗）・`handcut`（手を切って失敗）・`order`（順序違い）・`spike`（タイの棘）。

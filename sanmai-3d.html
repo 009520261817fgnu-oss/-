@@ -1,0 +1,684 @@
+<title>三枚おろし 3D観察台</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 2D版と同じ厨房の配色。左に3Dの観察台、右に魚・視点・表示の切り替え。狭い画面では縦に積む。 */
+:root {
+  --bg: #e9eef0; --surface: #ffffff; --surface-2: #f4f7f8; --ink: #1b2830; --muted: #56656e; --line: #cfd8dc;
+  --ai: #24477a; --ai-soft: #dfe7f3; --on-ai: #ffffff; --bad: #b3261e; --bad-soft: #f8dedb; --guide: #16835a;
+  --stage: #dfe6e9;
+  --font-display: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", system-ui, sans-serif;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11181d; --surface: #19232a; --surface-2: #1f2b33; --ink: #e5ecef; --muted: #9fb0b9; --line: #33434d;
+    --ai: #8db0e6; --ai-soft: #22344d; --on-ai: #0e1620; --bad: #f08a80; --bad-soft: #3d1f1d; --guide: #5fd39c; --stage: #1a242b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11181d; --surface: #19232a; --surface-2: #1f2b33; --ink: #e5ecef; --muted: #9fb0b9; --line: #33434d;
+  --ai: #8db0e6; --ai-soft: #22344d; --on-ai: #0e1620; --bad: #f08a80; --bad-soft: #3d1f1d; --guide: #5fd39c; --stage: #1a242b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 40px;
+}
+button { font: inherit; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--ai); outline-offset: 2px; }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 14px; }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 16px; }
+.brand small { display: block; font-size: 12px; letter-spacing: .14em; color: var(--muted); }
+.brand h1 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: clamp(22px, 3.4vw, 30px); line-height: 1.25; text-wrap: balance; }
+.badge { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--muted); background: var(--surface); }
+header a { color: var(--ai); font-size: 14px; }
+.main { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.stage { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; aspect-ratio: 16 / 10; min-height: 300px; max-width: 100%; touch-action: none; }
+@media (max-width: 560px) { .stage { aspect-ratio: 1 / 1; } }
+.stage canvas { display: block; width: 100%; height: 100%; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; background: var(--stage); }
+.overlay .box { display: grid; gap: 8px; max-width: 30em; }
+.overlay.err .box { background: var(--bad-soft); border: 2px solid var(--bad); border-radius: var(--radius); padding: 14px 16px; }
+.overlay.err h2 { margin: 0; color: var(--bad); font-size: 18px; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 4px solid var(--line); border-top-color: var(--ai); margin: 0 auto; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.label { position: absolute; transform: translate(-50%, -120%); font-size: 12.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: rgba(255,255,255,0.88); color: #1b2830; border: 1px solid #b7c3c8; white-space: nowrap; }
+.label.sel { background: #24477a; color: #fff; border-color: #24477a; }
+@media (max-width: 560px) { .label { font-size: 11px; padding: 0 5px; } }
+.hud { position: absolute; left: 10px; bottom: 10px; font-size: 12.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; color: var(--muted); max-width: calc(100% - 20px); }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 14px; min-width: 0; }
+.panel h2 { margin: 0; font-size: 15px; }
+.group { display: grid; gap: 8px; }
+.row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.row.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 9px 8px; min-height: 44px; cursor: pointer; font-weight: 500; line-height: 1.25; }
+.btn:hover { border-color: var(--ai); }
+.btn[aria-pressed="true"] { background: var(--ai); color: var(--on-ai); border-color: var(--ai); font-weight: 700; }
+.btn.primary { background: var(--ai); color: var(--on-ai); border-color: var(--ai); font-weight: 700; }
+.toggle { display: flex; gap: 8px; align-items: center; font-size: 15px; cursor: pointer; min-height: 32px; }
+.toggle input { width: 20px; height: 20px; }
+.info { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; font-size: 14.5px; display: grid; gap: 2px; min-height: 64px; }
+.info b { font-size: 15.5px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+details { font-size: 13px; color: var(--muted); }
+details pre { margin: 6px 0 0; white-space: pre-wrap; font-variant-numeric: tabular-nums; }
+.howto { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; font-size: 14px; }
+.howto ul { margin: 4px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 14px; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><small>三枚おろしシミュレーター・3D試作</small><h1>三枚おろし 3D観察台</h1></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="badge">試作版：観察のみ（切る操作は未対応）</span>
+      <a href="https://claude.ai/artifact/5kxjL3SkGVYkuueJSsfCMF" target="_blank" rel="noopener">2D版で三枚おろしを練習する</a>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="stage" id="stage">
+      <canvas id="canvas" aria-label="まな板の上の魚の3D表示"></canvas>
+      <div class="labels" id="labels" aria-hidden="true"></div>
+      <div class="hud" id="hud">ドラッグで回転・ホイール／ピンチで拡大縮小・右ドラッグ／2本指で移動</div>
+      <div class="overlay" id="loading"><div class="box"><div class="spinner"></div><span>3D表示を準備しています…</span></div></div>
+      <div class="overlay err" id="error" hidden><div class="box">
+        <h2 id="error-title">3D表示を開始できませんでした</h2>
+        <p id="error-text" style="margin:0"></p>
+        <button class="btn primary" id="error-retry" type="button">再読み込み</button>
+      </div></div>
+    </div>
+
+    <aside class="panel">
+      <div class="group">
+        <h2>魚</h2>
+        <div class="row" id="fish-buttons"></div>
+      </div>
+      <div class="group">
+        <h2>視点</h2>
+        <div class="row">
+          <button class="btn" type="button" data-view="oblique" id="view-oblique">斜めから</button>
+          <button class="btn" type="button" data-view="top" id="view-top">真上から</button>
+          <button class="btn" type="button" data-view="front" id="view-front">手前から</button>
+          <button class="btn" type="button" data-view="head" id="view-head">頭側から</button>
+          <button class="btn" type="button" data-view="tail" id="view-tail">尾側から</button>
+          <button class="btn primary" type="button" id="reset">初期状態に戻す</button>
+        </div>
+      </div>
+      <div class="group">
+        <h2>学習表示</h2>
+        <label class="toggle"><input type="checkbox" id="t-skeleton">中骨と骨格を表示</label>
+        <label class="toggle"><input type="checkbox" id="t-translucent">体を半透明にする</label>
+        <label class="toggle"><input type="checkbox" id="t-guides">三枚おろしの切る線を表示</label>
+        <label class="toggle"><input type="checkbox" id="t-labels">部位の名前を表示</label>
+      </div>
+      <div class="group">
+        <h2>部位の説明</h2>
+        <div class="info" id="part-info" role="status" aria-live="polite"><b>部位を選んでください</b><span>魚の上をクリック（タップ）すると、その部位の説明が出ます。</span></div>
+      </div>
+      <details id="perf"><summary>描画情報（負荷の目安）</summary><pre id="perf-text">—</pre></details>
+    </aside>
+  </div>
+
+  <section class="howto" aria-label="操作方法">
+    <b>操作方法</b>
+    <ul>
+      <li><b>ドラッグ／1本指</b>：視点を回す</li>
+      <li><b>ホイール／ピンチ</b>：拡大・縮小</li>
+      <li><b>右ドラッグ／2本指</b>：視点を平行移動</li>
+      <li><b>魚をクリック／タップ</b>：部位の説明</li>
+      <li><b>視点ボタン</b>：決まった向きから見る</li>
+      <li><b>初期状態に戻す</b>：視点と表示を最初に戻す</li>
+    </ul>
+  </section>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script>
+// モジュールの読み込みに失敗した場合（ネットワーク遮断など）に備えた見張り役
+window.__sanmai3dReady = false;
+setTimeout(function () {
+  if (window.__sanmai3dReady) return;
+  var l = document.getElementById("loading"), e = document.getElementById("error");
+  if (l) l.hidden = true;
+  if (e) { e.hidden = false; document.getElementById("error-text").textContent = "3D表示に必要なプログラム（Three.js）を読み込めませんでした。通信状況を確認して、再読み込みしてください。"; }
+}, 15000);
+document.getElementById("error-retry").addEventListener("click", function () { location.reload(); });
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+
+/* =========================================================
+   魚種データ（2D版 sanmai-oroshi.html の FISH_SPECS と同じ値。
+   形の関数 makeBody も2D版と同じ式で、側面図の座標系（y は下向き）で定義する）
+   ========================================================= */
+const FISH_SPECS = [
+  { id: "aji", name: "アジ", width: 0.42,
+    body: { X0: 100, X1: 600, CY: 185, ka: 0.55, kb: 0.9, depthD: 64, depthV: 57, snoutH: 5, pedH: 9, tailLen: 115, tailSpan: 62 },
+    spineDy: -3, headCut: { xTop: 228, xBot: 212 }, eye: { x: 140, y: 168, r: 12 }, gillX: 206, pect: { x0: 204, x1: 300 }, anusX: 335, pelvicX: 226,
+    zeigo: { a: 392, b: 594 },
+    colors: { skin: ["#3d5f6e", "#6f8f95", "#c9b778", "#dfe3e2", "#f6f7f4"], fin: "#aab6b0" },
+    fins: [{ kind: "dorsal", x0: 250, x1: 302, h0: 30, h1: 16 }, { kind: "dorsal", x0: 318, x1: 568, h0: 17, h1: 7 }, { kind: "anal", x0: 352, x1: 568, h0: 15, h1: 7 }],
+    finlets: [] },
+  { id: "saba", name: "サバ", width: 0.62,
+    body: { X0: 95, X1: 615, CY: 185, ka: 0.5, kb: 0.75, depthD: 46, depthV: 40, snoutH: 5, pedH: 7, tailLen: 100, tailSpan: 52 },
+    spineDy: -2, headCut: { xTop: 236, xBot: 220 }, eye: { x: 135, y: 172, r: 11 }, gillX: 214, pect: { x0: 214, x1: 270 }, anusX: 362, pelvicX: 238,
+    zeigo: null, stripes: true,
+    colors: { skin: ["#24505d", "#3f7d84", "#9fb5b4", "#dfe6e4", "#f4f5f2"], fin: "#9fb0ae" },
+    fins: [{ kind: "dorsal", x0: 262, x1: 330, h0: 22, h1: 9 }, { kind: "dorsal", x0: 410, x1: 462, h0: 16, h1: 7 }, { kind: "anal", x0: 418, x1: 466, h0: 14, h1: 7 }],
+    finlets: [482, 502, 522, 542, 562] },
+  { id: "tai", name: "タイ", width: 0.36,
+    body: { X0: 108, X1: 585, CY: 192, ka: 0.75, kb: 0.95, depthD: 90, depthV: 70, snoutH: 8, pedH: 11, tailLen: 100, tailSpan: 64 },
+    spineDy: -8, headCut: { xTop: 262, xBot: 240 }, eye: { x: 160, y: 160, r: 13 }, gillX: 238, pect: { x0: 238, x1: 322 }, anusX: 402, pelvicX: 262,
+    zeigo: null, dots: true,
+    colors: { skin: ["#c44d61", "#de7a85", "#eda4a2", "#f4cdc4", "#f9e9e1"], fin: "#e3949a" },
+    fins: [{ kind: "dorsal", x0: 262, x1: 525, h0: 26, h1: 14 }, { kind: "anal", x0: 430, x1: 530, h0: 18, h1: 10 }],
+    finlets: [] },
+];
+function makeBody(p) {
+  const raw = (u) => { u = clamp(u, 0, 1); return Math.pow(u, p.ka) * Math.pow(1 - u, p.kb); };
+  let m = 0; for (let i = 0; i <= 400; i++) m = Math.max(m, raw(i / 400));
+  const uOf = (x) => (x - p.X0) / (p.X1 - p.X0);
+  const f = (x) => raw(uOf(x)) / m;
+  const base = (x) => lerp(p.snoutH, p.pedH, clamp(uOf(x), 0, 1));
+  const Hd = (x) => base(x) + p.depthD * f(x);
+  const Hv = (x) => base(x) * 0.9 + p.depthV * f(x);
+  return { ...p, Hd, Hv, top: (x) => p.CY - Hd(x), bot: (x) => p.CY + Hv(x) };
+}
+const PARTS = {
+  head: ["頭", "目・口・えらがある部分。うろこを取った後に、胸ビレのすぐ後ろで切り落とします。"],
+  eye: ["目", "鮮度の目安。黒目がはっきりして澄んでいるものが新鮮です。"],
+  back: ["背側", "魚の上側（まな板では奥）。背側の身は厚く、三枚おろしでは背ビレの際に沿って尾側から頭側へ切り込みを入れます。"],
+  belly: ["腹側", "魚の下側（まな板では手前）。内臓が入っていて、身は薄く腹骨があります。"],
+  dorsal: ["背ビレ", "背側の切り込みは、背ビレの際（きわ）に沿って入れます。"],
+  anal: ["尻ビレ", "腹側の切り込みは、尻ビレの付け根に沿って入れます。"],
+  pectoral: ["胸ビレ", "頭を落とすときの目印です。胸ビレのすぐ後ろに包丁を入れます。"],
+  caudal: ["尾ビレ", "三枚おろしでは尾は中骨に付けたまま残し、尾の付け根を切り離しの起点にします。"],
+  finlet: ["小離鰭", "背と腹の後ろに並ぶ小さなヒレ。サバの仲間の特徴です。"],
+  spine: ["中骨（背骨）", "頭から尾まで体の中心を通る骨。三枚おろしはこの骨を境に上下の身を外し、身2枚と中骨1枚に分けます。3Dで見ると、骨が体の厚みの中央にあることが分かります。"],
+  rib: ["腹骨・骨格", "中骨から背と腹に向かって細い骨が伸びています。腹側の骨（腹骨）は、おろした後にすき取ります。"],
+  guts: ["内臓", "腹の中にあり、傷みやすく臭みの原因になります。下処理で取り除きます。"],
+};
+const U = 1 / 100; // 2D座標 → 3D（メートル風の単位）
+
+/* =========================================================
+   ProgressStore：表示設定をこの端末に記憶する（使えない環境では何もしない）
+   ========================================================= */
+const ProgressStore = {
+  key: "sanmai3d.settings.v1",
+  load() { try { return JSON.parse(localStorage.getItem(this.key) || "{}") || {}; } catch (_) { return {}; } },
+  save(v) { try { localStorage.setItem(this.key, JSON.stringify(v)); } catch (_) {} },
+};
+
+/* =========================================================
+   LearningState：魚・学習表示・選択中の部位
+   ========================================================= */
+const DEFAULTS = { fishId: "aji", skeleton: false, translucent: false, guides: true, labels: true };
+class LearningState {
+  constructor(saved) {
+    this.v = { ...DEFAULTS, ...pick(saved, Object.keys(DEFAULTS)), part: null };
+    if (!FISH_SPECS.some((f) => f.id === this.v.fishId)) this.v.fishId = DEFAULTS.fishId;
+    this.subs = [];
+  }
+  get() { return this.v; }
+  set(patch) {
+    const prev = this.v; this.v = { ...this.v, ...patch };
+    ProgressStore.save(pick(this.v, Object.keys(DEFAULTS)));
+    this.subs.forEach((fn) => fn(this.v, prev));
+  }
+  reset() { this.set({ ...DEFAULTS, fishId: this.v.fishId, part: null }); }
+  on(fn) { this.subs.push(fn); }
+}
+function pick(o, keys) { const r = {}; for (const k of keys) if (o && o[k] !== undefined) r[k] = o[k]; return r; }
+
+/* =========================================================
+   ModelManager：側面図の形の関数から3Dの魚・骨格・ガイド・まな板を作る
+   座標：魚の長さ方向 = x、背→腹 = 2Dのy（下向き）、体の厚み = z。
+   魚は「片側を下にしてまな板に寝かせた」向き（背が奥、腹が手前）に置く。
+   ========================================================= */
+class ModelManager {
+  constructor(scene) { this.scene = scene; this.fish = null; this.board = this.makeBoard(); scene.add(this.board); }
+
+  makeBoard() {
+    const c = document.createElement("canvas"); c.width = 512; c.height = 256;
+    const x = c.getContext("2d");
+    x.fillStyle = "#e4cc9f"; x.fillRect(0, 0, 512, 256);
+    for (let i = 0; i < 26; i++) {
+      x.strokeStyle = `rgba(160,120,70,${0.12 + (i % 3) * 0.05})`; x.lineWidth = 1 + (i % 4) * 0.6;
+      x.beginPath(); const y = 6 + i * 9.6;
+      for (let s = 0; s <= 512; s += 16) x.lineTo(s, y + Math.sin(s * 0.02 + i) * 3);
+      x.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const geo = new THREE.BoxGeometry(9.2, 0.32, 4.6);
+    const side = new THREE.MeshStandardMaterial({ color: 0xcfb27e, roughness: 0.85 });
+    const topM = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
+    const m = new THREE.Mesh(geo, [side, side, topM, side, side, side]);
+    m.position.y = -0.16; m.receiveShadow = true; m.userData.part = null;
+    return m;
+  }
+
+  build(spec) {
+    this.dispose();
+    const B = makeBody(spec.body);
+    const cx = (B.X0 + B.X1 + B.tailLen) / 2;
+    const SPY = B.CY + spec.spineDy;
+    // 2D の点 (x, y) と厚み方向 z を3Dへ。魚の基準座標では y を上向きにする
+    const P = (x, y, z = 0) => new THREE.Vector3((x - cx) * U, (B.CY - y) * U, z * U);
+    const halfW = (x) => spec.width * (B.Hd(x) + B.Hv(x)) / 2; // 体の半分の厚み（2D単位）
+    // ある高さ y での体表の厚み（楕円の断面）
+    const surfZ = (x, y) => {
+      const H = y < B.CY ? B.Hd(x) : B.Hv(x); const t = clamp(Math.abs(y - B.CY) / Math.max(H, 1e-3), 0, 1);
+      return halfW(x) * Math.pow(1 - Math.pow(t, 2.2), 1 / 2.2);
+    };
+    const fish = new THREE.Group(); fish.name = "fish";
+    const parts = {};
+
+    // ---- 胴体（輪切りの楕円を並べた面） ----
+    const M = 110, N = 48;
+    const pos = [], col = [], idx = [];
+    const stops = spec.colors.skin.map((c) => new THREE.Color(c)); const offs = [0, 0.36, 0.5, 0.58, 1];
+    const tmp = new THREE.Color();
+    const skinAt = (t) => { // t: 0=背 → 1=腹
+      for (let i = 1; i < offs.length; i++) if (t <= offs[i]) return tmp.copy(stops[i - 1]).lerp(stops[i], (t - offs[i - 1]) / (offs[i] - offs[i - 1]));
+      return tmp.copy(stops[stops.length - 1]);
+    };
+    for (let i = 0; i <= M; i++) {
+      const s = i / M; const x = lerp(B.X0 - 7, B.X1, s);
+      const xx = clamp(x, B.X0, B.X1);
+      const nose = x < B.X0 ? (x - (B.X0 - 7)) / 7 : 1;
+      for (let j = 0; j <= N; j++) {
+        const th = (j / N) * Math.PI * 2; const sy = Math.sin(th), cz = Math.cos(th);
+        const yUp = (sy >= 0 ? B.Hd(xx) * sy : B.Hv(xx) * sy) * nose;
+        const z = halfW(xx) * Math.sign(cz) * Math.pow(Math.abs(cz), 0.85) * nose;
+        const y2 = B.CY - yUp;
+        pos.push((x - cx) * U, yUp * U, z * U);
+        const t = (y2 - (B.CY - B.Hd(xx))) / (B.Hd(xx) + B.Hv(xx));
+        skinAt(clamp(t, 0, 1));
+        let c = tmp.clone();
+        if (spec.stripes && t < 0.42 && Math.sin(x * 0.28 + Math.sin(t * 9) * 2.4) > 0.55) c.multiplyScalar(0.35);
+        if (spec.dots && t < 0.55 && t > 0.08 && Math.sin(x * 0.9) * Math.sin(t * 60 + x * 0.1) > 0.93) c.setRGB(0.15, 0.45, 0.75);
+        col.push(c.r, c.g, c.b);
+      }
+    }
+    for (let i = 0; i < M; i++) for (let j = 0; j < N; j++) {
+      const a = i * (N + 1) + j, b = a + N + 1;
+      idx.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+    const bodyGeo = new THREE.BufferGeometry();
+    bodyGeo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    bodyGeo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    bodyGeo.setIndex(idx); bodyGeo.computeVertexNormals();
+    const bodyMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.28, transparent: true, opacity: 1 });
+    const body = new THREE.Mesh(bodyGeo, bodyMat); body.castShadow = true; body.userData.part = "body"; body.renderOrder = 2;
+    fish.add(body); parts.body = body;
+
+    // ---- ヒレ（側面図の形をそのまま薄い板に） ----
+    const finMat = new THREE.MeshStandardMaterial({ color: spec.colors.fin, roughness: 0.6, side: THREE.DoubleSide, transparent: true, opacity: 0.88 });
+    const shapeMesh = (pts2, part) => {
+      const sh = new THREE.Shape(pts2.map((q) => new THREE.Vector2((q.x - cx) * U, (B.CY - q.y) * U)));
+      const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), finMat); m.userData.part = part; m.castShadow = true; return m;
+    };
+    for (const fin of spec.fins) {
+      const edge = fin.kind === "dorsal" ? B.top : B.bot, sg = fin.kind === "dorsal" ? -1 : 1;
+      const pts2 = [{ x: fin.x0, y: edge(fin.x0) - sg * 2 }];
+      const n = Math.max(2, Math.round((fin.x1 - fin.x0) / 12));
+      for (let i = 0; i <= n; i++) { const x = lerp(fin.x0 + 4, fin.x1 - 6, i / n); pts2.push({ x, y: edge(x) + sg * lerp(fin.h0, fin.h1, i / n) }); }
+      pts2.push({ x: fin.x1, y: edge(fin.x1) - sg * 2 });
+      fish.add(shapeMesh(pts2, fin.kind));
+    }
+    for (const x of spec.finlets) {
+      fish.add(shapeMesh([{ x: x - 5, y: B.top(x) + 2 }, { x: x + 5, y: B.top(x + 5) - 7 }, { x: x + 4, y: B.top(x + 4) + 2 }], "finlet"));
+      fish.add(shapeMesh([{ x: x - 5, y: B.bot(x) - 2 }, { x: x + 5, y: B.bot(x + 5) + 7 }, { x: x + 4, y: B.bot(x + 4) - 2 }], "finlet"));
+    }
+    { // 尾ビレ（二股）
+      const X1 = B.X1, CY = B.CY, L = B.tailLen, S = B.tailSpan; const t = [];
+      const curve = new THREE.CubicBezierCurve(new THREE.Vector2(X1 - 4, B.top(X1 - 4) + 2), new THREE.Vector2(X1 + 40, CY - 25), new THREE.Vector2(X1 + 80, CY - S * 0.8), new THREE.Vector2(X1 + L, CY - S));
+      const curve2 = new THREE.CubicBezierCurve(new THREE.Vector2(X1 + L, CY - S), new THREE.Vector2(X1 + L * 0.83, CY - 25), new THREE.Vector2(X1 + 72, CY - 6), new THREE.Vector2(X1 + 70, CY));
+      curve.getPoints(12).concat(curve2.getPoints(10)).forEach((v) => t.push({ x: v.x, y: v.y }));
+      const half = t.slice(); for (let i = half.length - 2; i >= 0; i--) t.push({ x: half[i].x, y: 2 * CY - half[i].y });
+      fish.add(shapeMesh(t, "caudal"));
+    }
+    // 胸ビレ・腹ビレは体表の両側に
+    for (const side of [1, -1]) {
+      const pe = spec.pect; const z = surfZ(pe.x0 + 10, B.CY + 8) + 1;
+      const pts2 = [{ x: pe.x0, y: B.CY + 8 }, { x: pe.x0 + 30, y: B.CY + 2 }, { x: pe.x1, y: B.CY + 4 }, { x: pe.x1 - 30, y: B.CY + 12 }, { x: pe.x0 + 2, y: B.CY + 16 }];
+      const m = shapeMesh(pts2, "pectoral"); m.position.z = side * z * U; m.rotation.y = side * 0.12; fish.add(m);
+    }
+    // 目
+    const eyeGeo = new THREE.SphereGeometry(spec.eye.r * U, 20, 14);
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xf4f1e6, roughness: 0.2 });
+    const pupilGeo = new THREE.SphereGeometry(spec.eye.r * 0.58 * U, 16, 12);
+    const pupilMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.1, metalness: 0.2 });
+    for (const side of [1, -1]) {
+      const z = surfZ(spec.eye.x, spec.eye.y);
+      const e = new THREE.Mesh(eyeGeo, eyeMat); e.position.copy(P(spec.eye.x, spec.eye.y, side * (z - spec.eye.r * 0.55))); e.userData.part = "eye"; fish.add(e);
+      const pu = new THREE.Mesh(pupilGeo, pupilMat); pu.position.copy(P(spec.eye.x + 1, spec.eye.y, side * (z + spec.eye.r * 0.12))); pu.userData.part = "eye"; fish.add(pu);
+    }
+
+    // ---- 骨格（中骨・骨） ----
+    const skeleton = new THREE.Group(); skeleton.name = "skeleton";
+    const boneMat = new THREE.MeshStandardMaterial({ color: 0xf6f0e4, roughness: 0.5, depthTest: true });
+    const xa = spec.headCut.xTop - 40, xb = B.X1 + 10;
+    const spineGeo = new THREE.CylinderGeometry(3.2 * U, 2.2 * U, (xb - xa) * U, 12);
+    const spineM = new THREE.Mesh(spineGeo, boneMat); spineM.rotation.z = Math.PI / 2; spineM.position.copy(P((xa + xb) / 2, SPY)); spineM.userData.part = "spine";
+    skeleton.add(spineM);
+    const ribPos = [];
+    for (let x = xa + 16; x <= B.X1 - 14; x += 12) {
+      const up = (SPY - B.top(x)) * 0.85, dn = (B.bot(x) - SPY) * (x < spec.anusX ? 0.8 : 0.65);
+      for (const z of [0]) {
+        const a = P(x, SPY, z), b = P(x + 9, SPY - up, z), c = P(x + 8, SPY + dn, z);
+        ribPos.push(a.x, a.y, a.z, b.x, b.y, b.z, a.x, a.y, a.z, c.x, c.y, c.z);
+      }
+    }
+    const ribGeo = new THREE.BufferGeometry(); ribGeo.setAttribute("position", new THREE.Float32BufferAttribute(ribPos, 3));
+    const ribs = new THREE.LineSegments(ribGeo, new THREE.LineBasicMaterial({ color: 0xf2ece0 })); ribs.userData.part = "rib";
+    skeleton.add(ribs);
+    skeleton.visible = false; fish.add(skeleton); parts.skeleton = skeleton;
+
+    // ---- 三枚おろしの切る線（上になっている面の体表に沿わせる） ----
+    const guides = new THREE.Group(); guides.name = "guides";
+    const lineOn = (fn, a, b, color, axis = "x") => {
+      const pts = [];
+      for (let s = a; s <= b; s += 3) {
+        const x = axis === "x" ? s : fn(s), y = axis === "x" ? fn(s) : s;
+        const xx = clamp(x, B.X0, B.X1); pts.push(P(x, y, surfZ(xx, y) + 1.2));
+      }
+      const g = new THREE.BufferGeometry().setFromPoints(pts);
+      const l = new THREE.Line(g, new THREE.LineDashedMaterial({ color, dashSize: 0.08, gapSize: 0.05, depthTest: true }));
+      l.computeLineDistances(); return l;
+    };
+    const head = (y) => lerp(spec.headCut.xTop, spec.headCut.xBot, (y - B.top(spec.headCut.xTop)) / (B.bot(spec.headCut.xBot) - B.top(spec.headCut.xTop)));
+    guides.add(lineOn(head, B.top(spec.headCut.xTop) + 2, B.bot(spec.headCut.xBot) - 2, 0xd9822b, "y"));
+    guides.add(lineOn((x) => B.bot(x) - (3 + 0.1 * B.Hv(x)), spec.headCut.xBot + 14, B.X1 - 8, 0x16835a));
+    guides.add(lineOn((x) => B.top(x) + (3 + 0.1 * B.Hd(x)), spec.headCut.xTop + 8, B.X1 - 8, 0x16835a));
+    { // 中骨の線は体の中に通っているので、上の面に投影して示す
+      const pts = []; for (let x = spec.headCut.xTop + 4; x <= B.X1 - 4; x += 4) pts.push(P(x, SPY, surfZ(x, SPY) + 1.2));
+      const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineDashedMaterial({ color: 0x2b6cc4, dashSize: 0.05, gapSize: 0.05 }));
+      l.computeLineDistances(); guides.add(l);
+    }
+    fish.add(guides); parts.guides = guides;
+
+    // ---- 部位ラベルの位置（上の面） ----
+    const mid = (spec.headCut.xTop + B.X1) / 2;
+    const anchors = [
+      ["head", P(spec.gillX - 45, B.CY + 22, surfZ(spec.gillX - 45, B.CY + 22) + 2)],
+      ["eye", P(spec.eye.x, spec.eye.y - spec.eye.r, surfZ(spec.eye.x, spec.eye.y) + 2)],
+      ["dorsal", P(spec.fins[0].x0 + 20, B.top(spec.fins[0].x0 + 20) - spec.fins[0].h0, 0)],
+      ["back", P(mid, B.top(mid) + 0.3 * B.Hd(mid), surfZ(mid, B.top(mid) + 0.3 * B.Hd(mid)) + 2)],
+      ["belly", P(mid, B.bot(mid) - 0.3 * B.Hv(mid), surfZ(mid, B.bot(mid) - 0.3 * B.Hv(mid)) + 2)],
+      ["spine", P(mid + 60, SPY, surfZ(mid + 60, SPY) + 2)],
+      ["pectoral", P(spec.pect.x1 - 10, B.CY + 4, surfZ(spec.pect.x1 - 10, B.CY) + 3)],
+      ["anal", P((spec.fins[spec.fins.length - 1].x0 + spec.fins[spec.fins.length - 1].x1) / 2, B.bot((spec.fins[spec.fins.length - 1].x0 + spec.fins[spec.fins.length - 1].x1) / 2) + 14, 0)],
+      ["caudal", P(B.X1 + B.tailLen * 0.7, B.CY - B.tailSpan * 0.55, 0)],
+    ];
+    if (spec.finlets.length) anchors.push(["finlet", P(spec.finlets[2], B.top(spec.finlets[2]) - 8, 0)]);
+
+    // まな板の上に、片側を下にして寝かせる（背＝奥、腹＝手前）
+    fish.rotation.x = -Math.PI / 2;
+    const maxW = Math.max(...Array.from({ length: 60 }, (_, i) => halfW(lerp(B.X0, B.X1, i / 59))));
+    fish.position.y = maxW * U * 0.92;
+    this.scene.add(fish);
+    this.fish = fish; this.parts = parts; this.anchors = anchors; this.spec = spec;
+    this.geo = { B, cx, SPY };
+    this.pickables = [];
+    fish.traverse((o) => { if (o.isMesh && o.userData.part) this.pickables.push(o); });
+    return fish;
+  }
+
+  // 体の当たった位置から部位を決める（2Dの座標に戻して判定）
+  partAt(hit) {
+    const part = hit.object.userData.part;
+    if (part !== "body") return part;
+    const local = this.fish.worldToLocal(hit.point.clone());
+    const { B, cx, SPY } = this.geo; const s = this.spec;
+    const x = local.x / U + cx, y = B.CY - local.y / U;
+    if (x < s.gillX + 4) return "head";
+    if (x < s.anusX && y > SPY + 10 && y < B.bot(x) - 6 && this.parts.skeleton.visible) return "guts";
+    if (Math.abs(y - SPY) < 6 && this.parts.skeleton.visible) return "spine";
+    return y < SPY ? "back" : "belly";
+  }
+
+  setDisplay(v) {
+    if (!this.fish) return;
+    this.parts.skeleton.visible = !!v.skeleton;
+    this.parts.guides.visible = !!v.guides;
+    const body = this.parts.body;
+    body.material.opacity = v.translucent || v.skeleton ? 0.35 : 1;
+    body.material.depthWrite = !(v.translucent || v.skeleton);
+    body.material.needsUpdate = true;
+  }
+
+  dispose() {
+    if (!this.fish) return;
+    const geos = new Set(), mats = new Set();
+    this.fish.traverse((o) => { if (o.geometry) geos.add(o.geometry); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => mats.add(m)); });
+    geos.forEach((g) => g.dispose()); mats.forEach((m) => m.dispose());
+    this.scene.remove(this.fish); this.fish = null;
+  }
+}
+
+/* =========================================================
+   SceneManager：描画・照明・画面サイズ・描画の要否
+   ========================================================= */
+class SceneManager {
+  constructor(canvas, stage) {
+    this.canvas = canvas; this.stage = stage;
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(40, 1.6, 0.05, 100);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x9a8a70, 1.6); this.scene.add(hemi);
+    const sun = new THREE.DirectionalLight(0xffffff, 2.4); sun.position.set(3, 7, 4); sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 4, bottom: -4, near: 1, far: 20 });
+    sun.shadow.bias = -0.0005; this.scene.add(sun);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.6); fill.position.set(-4, 3, -3); this.scene.add(fill);
+    this.dirty = true; this.frames = 0; this.fpsT = performance.now(); this.fps = 0;
+    this.applyTheme();
+    this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(stage);
+    this.resize();
+  }
+  applyTheme() {
+    const c = getComputedStyle(document.documentElement).getPropertyValue("--stage").trim() || "#dfe6e9";
+    this.scene.background = new THREE.Color(c); this.dirty = true;
+  }
+  resize() {
+    const w = Math.max(1, this.stage.clientWidth), h = Math.max(1, this.stage.clientHeight);
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    this.dirty = true;
+  }
+  render() {
+    this.renderer.render(this.scene, this.camera); this.dirty = false;
+    this.frames++; const now = performance.now();
+    if (now - this.fpsT > 1000) { this.fps = this.frames * 1000 / (now - this.fpsT); this.frames = 0; this.fpsT = now; }
+  }
+}
+
+/* =========================================================
+   CameraController：回転・拡大縮小・平行移動（マウスとタッチ）と視点プリセット
+   ========================================================= */
+const VIEWS = {
+  oblique: { pos: [0.6, 4.2, 5.4], target: [0.2, 0.3, 0] },
+  top: { pos: [0.2, 8.2, 0.01], target: [0.2, 0.3, 0] },
+  front: { pos: [0.2, 1.6, 6.8], target: [0.2, 0.4, 0] },
+  head: { pos: [-6.4, 2.2, 0.6], target: [0.2, 0.4, 0] },
+  tail: { pos: [6.4, 2.2, 0.6], target: [0.2, 0.4, 0] },
+};
+class CameraController {
+  constructor(sm) {
+    this.sm = sm;
+    const c = this.controls = new OrbitControls(sm.camera, sm.renderer.domElement);
+    c.enableDamping = true; c.dampingFactor = 0.09;
+    c.minDistance = 2.2; c.maxDistance = 14;
+    c.maxPolarAngle = Math.PI * 0.495; // まな板の下には回り込まない
+    c.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    c.addEventListener("change", () => { sm.dirty = true; });
+    this.anim = null; this.reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.go("oblique", true);
+  }
+  // 縦長の画面では魚全体が入るように、視点を遠ざける
+  presetPos(name) {
+    const v = VIEWS[name]; const t = new THREE.Vector3(...v.target);
+    const k = Math.max(1, 1.45 / this.sm.camera.aspect);
+    return { pos: new THREE.Vector3(...v.pos).sub(t).multiplyScalar(k).add(t), target: t };
+  }
+  go(name, instant) {
+    if (!VIEWS[name]) return;
+    const pr = this.presetPos(name); const toP = pr.pos, toT = pr.target;
+    if (instant || this.reduced) { this.sm.camera.position.copy(toP); this.controls.target.copy(toT); this.controls.update(); this.anim = null; this.sm.dirty = true; return; }
+    this.anim = { t0: performance.now(), d: 450, fromP: this.sm.camera.position.clone(), fromT: this.controls.target.clone(), toP, toT };
+  }
+  update() {
+    if (this.anim) {
+      const a = this.anim; const t = clamp((performance.now() - a.t0) / a.d, 0, 1); const e = t * t * (3 - 2 * t);
+      this.sm.camera.position.lerpVectors(a.fromP, a.toP, e); this.controls.target.lerpVectors(a.fromT, a.toT, e);
+      if (t >= 1) this.anim = null; this.sm.dirty = true;
+    }
+    if (this.controls.update()) this.sm.dirty = true;
+  }
+}
+
+/* =========================================================
+   UIController：ボタン・表示切り替え・部位ラベル・説明・描画情報
+   ========================================================= */
+class UIController {
+  constructor(state, mm, cam, sm) {
+    this.state = state; this.mm = mm; this.cam = cam; this.sm = sm;
+    this.labelsEl = document.getElementById("labels"); this.labelEls = [];
+    const fb = document.getElementById("fish-buttons");
+    FISH_SPECS.forEach((f) => {
+      const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.id = "fish-" + f.id; b.textContent = f.name;
+      b.addEventListener("click", () => state.set({ fishId: f.id, part: null })); fb.appendChild(b);
+    });
+    document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => cam.go(b.dataset.view)));
+    document.getElementById("reset").addEventListener("click", () => { state.reset(); cam.go("oblique"); });
+    const bind = (id, key) => { const el = document.getElementById(id); el.addEventListener("change", () => state.set({ [key]: el.checked })); };
+    bind("t-skeleton", "skeleton"); bind("t-translucent", "translucent"); bind("t-guides", "guides"); bind("t-labels", "labels");
+    // クリック／タップ（ドラッグでないとき）で部位を選ぶ
+    const cv = sm.renderer.domElement; let downAt = null;
+    cv.addEventListener("pointerdown", (e) => { downAt = { x: e.clientX, y: e.clientY }; });
+    cv.addEventListener("pointerup", (e) => {
+      if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6) { downAt = null; return; }
+      downAt = null; this.pick(e);
+    });
+    this.ray = new THREE.Raycaster(); this.ray.params.Line.threshold = 0.03;
+  }
+  pick(e) {
+    const r = this.sm.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    this.ray.setFromCamera(ndc, this.sm.camera);
+    const list = this.mm.pickables.filter((o) => o.visible && (o.parent.visible !== false));
+    const hits = this.ray.intersectObjects(list, false);
+    // 骨格表示中は、半透明の体より骨を優先する
+    let hit = hits[0];
+    if (this.state.get().skeleton) hit = hits.find((h) => h.object.userData.part === "spine") || hit;
+    this.state.set({ part: hit ? this.mm.partAt(hit) : null });
+  }
+  sync(v) {
+    FISH_SPECS.forEach((f) => document.getElementById("fish-" + f.id).setAttribute("aria-pressed", String(v.fishId === f.id)));
+    document.getElementById("t-skeleton").checked = v.skeleton;
+    document.getElementById("t-translucent").checked = v.translucent;
+    document.getElementById("t-guides").checked = v.guides;
+    document.getElementById("t-labels").checked = v.labels;
+    const info = document.getElementById("part-info");
+    if (v.part && PARTS[v.part]) info.innerHTML = `<b>${PARTS[v.part][0]}（${this.mm.spec.name}）</b><span>${PARTS[v.part][1]}</span>`;
+    else info.innerHTML = `<b>部位を選んでください</b><span>魚の上をクリック（タップ）すると、その部位の説明が出ます。${v.guides ? "緑の点線は背・腹の切り込み、青の点線は中骨の位置、橙の点線は頭を落とす位置です。" : ""}</span>`;
+    this.buildLabels(v);
+  }
+  buildLabels(v) {
+    this.labelsEl.innerHTML = ""; this.labelEls = [];
+    if (!v.labels || !this.mm.anchors) return;
+    for (const [key, pos] of this.mm.anchors) {
+      if (key === "spine" && !v.skeleton && !v.guides) continue;
+      const el = document.createElement("span"); el.className = "label" + (v.part === key ? " sel" : ""); el.textContent = PARTS[key][0];
+      this.labelsEl.appendChild(el); this.labelEls.push({ el, pos });
+    }
+    this.sm.dirty = true;
+  }
+  placeLabels() {
+    if (!this.labelEls.length) return;
+    const w = this.sm.stage.clientWidth, h = this.sm.stage.clientHeight; const v = new THREE.Vector3();
+    for (const { el, pos } of this.labelEls) {
+      v.copy(pos); this.mm.fish.localToWorld(v); v.project(this.sm.camera);
+      const vis = v.z < 1 && Math.abs(v.x) < 1.05 && Math.abs(v.y) < 1.05;
+      el.style.display = vis ? "" : "none";
+      el.style.left = ((v.x + 1) / 2 * w).toFixed(1) + "px"; el.style.top = ((1 - v.y) / 2 * h).toFixed(1) + "px";
+    }
+  }
+  perf() {
+    const i = this.sm.renderer.info;
+    const mem = performance.memory ? `\nJSヒープ使用量: ${(performance.memory.usedJSHeapSize / 1048576).toFixed(1)} MB` : "";
+    document.getElementById("perf-text").textContent =
+      `描画回数/フレーム: ${i.render.calls}\n三角形: ${i.render.triangles.toLocaleString()}\nジオメトリ: ${i.memory.geometries}・テクスチャ: ${i.memory.textures}\n画素比: ${this.sm.renderer.getPixelRatio()}\n描画の速さ: ${this.sm.fps ? this.sm.fps.toFixed(0) + " fps（動かしている間）" : "静止中（再描画なし）"}${mem}`;
+  }
+}
+
+/* =========================================================
+   起動
+   ========================================================= */
+function showError(title, text) {
+  document.getElementById("loading").hidden = true;
+  const e = document.getElementById("error"); e.hidden = false;
+  document.getElementById("error-title").textContent = title; document.getElementById("error-text").textContent = text;
+}
+function webglAvailable() {
+  try { const c = document.createElement("canvas"); return !!(window.WebGL2RenderingContext && c.getContext("webgl2")) || !!c.getContext("webgl"); } catch (_) { return false; }
+}
+
+function start() {
+  if (!webglAvailable()) { window.__sanmai3dReady = true; showError("3D表示に対応していません", "この端末・ブラウザでは WebGL が使えないため、3D表示ができません。2D版で練習してください。"); return; }
+  const stage = document.getElementById("stage"), canvas = document.getElementById("canvas");
+  const sm = new SceneManager(canvas, stage);
+  const mm = new ModelManager(sm.scene);
+  const cam = new CameraController(sm);
+  const state = new LearningState(ProgressStore.load());
+  const ui = new UIController(state, mm, cam, sm);
+
+  let builtFor = null;
+  const apply = (v) => {
+    if (builtFor !== v.fishId) { mm.build(FISH_SPECS.find((f) => f.id === v.fishId)); builtFor = v.fishId; }
+    mm.setDisplay(v); ui.sync(v); sm.dirty = true;
+  };
+  state.on(apply); apply(state.get());
+
+  canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); showError("3D表示が中断されました", "グラフィックの処理が中断されました（メモリ不足など）。再読み込みしてください。"); });
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => sm.applyTheme());
+  new MutationObserver(() => sm.applyTheme()).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  let first = true, perfT = 0;
+  const loop = (t) => {
+    cam.update();
+    if (sm.dirty) {
+      sm.render(); ui.placeLabels();
+      if (first) { first = false; document.getElementById("loading").hidden = true; window.__sanmai3dReady = true; }
+    }
+    if (t - perfT > 1000) { perfT = t; ui.perf(); }
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+  // 自動テスト用の読み取り専用フック
+  window.__sanmai3d = { state, cam, sm, mm };
+}
+try { start(); } catch (err) { window.__sanmai3dReady = true; console.error(err); showError("3D表示を開始できませんでした", "初期化中に問題が起きました：" + (err && err.message ? err.message : String(err))); }
+</script>

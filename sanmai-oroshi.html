@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
-/* Layout: 厨房の作業台。左に大きなまな板（SVG）、右に工程札と作業ボタン。狭い画面では縦に積む。 */
+/* Layout: 厨房の作業台。左に大きなまな板（SVG）と道具箱、右に工程札と講評。狭い画面では縦に積む。 */
 :root {
   --bg: #e9eef0;          /* ステンレス台まわりの淡い青灰 */
   --surface: #ffffff;
@@ -170,6 +170,13 @@ th { color: var(--muted); font-weight: 500; }
 @media (max-width: 860px) { .two { grid-template-columns: minmax(0,1fr); } }
 .list { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 15px; }
 .note { font-size: 13px; color: var(--muted); }
+.failbox { border: 2px solid var(--bad); background: var(--bad-soft); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 8px; }
+.failbox h2 { color: var(--bad); font-size: 24px; }
+.meter { display: grid; gap: 4px; font-size: 13px; }
+.meter .bar i { background: var(--bad); }
+.stars { color: var(--warn); letter-spacing: 2px; }
+.opt svg { width: 100%; height: auto; max-height: 70px; }
+.stepper li.failed { border-color: var(--bad); background: var(--bad-soft); }
 .fadein { animation: fade .35s ease-out; }
 @keyframes fade { from { opacity: .4; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .fadein { animation: none; } }
@@ -187,7 +194,8 @@ const { useState, useRef, useEffect, useMemo, useCallback } = React;
 const html = htm.bind(React.createElement);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
-const VIEW = { x: 60, y: 55, w: 690, h: 270 };
+const frac = (v) => v - Math.floor(v);
+const VIEW = { x: 60, y: 50, w: 690, h: 275 };
 const MIRROR_C = 800; // 裏返し時の鏡映の中心（x → 800 - x）
 
 /* =========================================================
@@ -204,104 +212,169 @@ function makeBody(p) {
   const base = (x) => lerp(p.snoutH, p.pedH, clamp(uOf(x), 0, 1));
   const Hd = (x) => base(x) + p.depthD * f(x);
   const Hv = (x) => base(x) * 0.9 + p.depthV * f(x);
-  const top = (x) => p.CY - Hd(x);
-  const bot = (x) => p.CY + Hv(x);
-  return { ...p, f, Hd, Hv, top, bot };
+  return { ...p, f, Hd, Hv, top: (x) => p.CY - Hd(x), bot: (x) => p.CY + Hv(x) };
 }
 
-function buildAji() {
-  const B = makeBody({ X0: 100, X1: 600, CY: 185, ka: 0.55, kb: 0.9, depthD: 64, depthV: 57, snoutH: 5, pedH: 9, tailLen: 115, tailSpan: 62 });
-  const { top, bot, Hd, Hv, CY } = B;
-  const SPY = CY - 3; // 中骨の高さ
-  const headT = { xTop: 228, xBot: 212 };
+/* 魚種の定義から、判定用の線・工程・解説をまとめて組み立てる */
+function buildFish(sp) {
+  const B = makeBody(sp.body);
+  const { top, bot, Hd, Hv, CY, X0, X1 } = B;
+  const SPY = CY + sp.spineDy;
+  const headT = { xTop: sp.headCut.xTop, xBot: sp.headCut.xBot };
   headT.yTop = top(headT.xTop) - 4;
   headT.yBot = bot(headT.xBot) + 4;
   const headFn = (y) => lerp(headT.xTop, headT.xBot, (y - headT.yTop) / (headT.yBot - headT.yTop));
+  const tailX = X1 - 12;
   const targets = {
-    zeigo: { key: "zeigo", name: "ぜいご取り", axis: "x", a: 392, b: 594, fn: () => CY - 1, dir: -1, inward: 0,
-      dirMsg: "ぜいごは尾側から頭側へ、包丁を寝かせて薄くそぎ取ります。逆向きだと硬いうろこに刃が引っかかります。" },
     head: { key: "head", name: "頭を落とす", axis: "y", a: headT.yTop, b: headT.yBot, fn: headFn, dir: 0, inward: 1 },
-    gut: { key: "gut", name: "腹を切り開く", axis: "x", a: 218, b: 335, fn: (x) => bot(x) - 6, dir: 1, inward: -1,
+    gut: { key: "gut", name: "腹を切り開く", axis: "x", a: headT.xBot + 6, b: sp.anusX, fn: (x) => bot(x) - 6, dir: 1, inward: -1,
       dirMsg: "腹は頭側の切り口から肛門に向かって切り開くと、刃先が内臓を傷つけにくくなります。" },
-    belly: { key: "belly", name: "腹側の切り込み", axis: "x", a: 226, b: 592, fn: (x) => bot(x) - (3 + 0.1 * Hv(x)), dir: 1, inward: -1,
+    belly: { key: "belly", name: "腹側の切り込み", axis: "x", a: headT.xBot + 14, b: X1 - 8, fn: (x) => bot(x) - (3 + 0.1 * Hv(x)), dir: 1, inward: -1,
       dirMsg: "腹側は頭側から尾に向かって包丁を進めるのが基本です。骨の流れに沿うので身が崩れにくくなります。" },
-    back: { key: "back", name: "背側の切り込み", axis: "x", a: 236, b: 592, fn: (x) => top(x) + (3 + 0.1 * Hd(x)), dir: -1, inward: 1,
+    back: { key: "back", name: "背側の切り込み", axis: "x", a: headT.xTop + 8, b: X1 - 8, fn: (x) => top(x) + (3 + 0.1 * Hd(x)), dir: -1, inward: 1,
       dirMsg: "背側は魚の向きを変え、尾側から頭に向かって切り進めます。" },
-    spine: { key: "spine", name: "中骨に沿って切り離す", axis: "x", a: 232, b: 596, fn: () => SPY, dir: -1, inward: 0,
+    spine: { key: "spine", name: "中骨に沿って切り離す", axis: "x", a: headT.xTop + 4, b: X1 - 4, fn: () => SPY, dir: -1, inward: 0,
       dirMsg: "切り離しは尾の付け根に包丁を入れ、頭側へ中骨の上をすべらせます。" },
-    tail: { key: "tail", name: "尾を切り落とす", axis: "y", a: top(588) - 8, b: bot(588) + 8, fn: () => 588, dir: 0, inward: 0 },
+    tail: { key: "tail", name: "尾を切り落とす", axis: "y", a: top(tailX) - 8, b: bot(tailX) + 8, fn: () => tailX, dir: 0, inward: 0 },
   };
+  if (sp.zeigo) targets.zeigo = { key: "zeigo", name: "ぜいご取り", axis: "x", a: sp.zeigo.a, b: sp.zeigo.b, fn: () => CY - 1, dir: -1, inward: 0,
+    dirMsg: "ぜいごは尾側から頭側へ、包丁を寝かせて薄くそぎ取ります。逆向きだと硬いうろこに刃が引っかかります。" };
+
+  const before = ["scale"].concat(sp.zeigo ? ["zeigo"] : []);
+  const prep = [
+    { id: "board", label: "まな板を固定する", tool: "cloth", req: [],
+      how: "道具箱から「濡れ布巾」を持ち、まな板をタップして下に敷きます。",
+      lesson: "まな板の下に固く絞った濡れ布巾を敷くと滑り止めになります。まな板が動くと包丁の軌道がぶれ、けがの原因になります。" },
+    { id: "scale", label: "うろこを取る", tool: "scaler", req: [], how: sp.text.scaleHow, lesson: sp.text.scaleLesson },
+  ];
+  if (sp.zeigo) prep.push({ id: "zeigo", label: "ぜいごを取る", tool: "knife", target: "zeigo", req: [],
+    how: "「出刃包丁」で、尾の付け根から体の中央に並ぶ硬いうろこ（ぜいご）に沿って頭の方向へドラッグし、「決定」を押します。",
+    lesson: "ぜいご（稜鱗）はアジの側線の後半に並ぶ硬いうろこです。包丁を寝かせて尾側から差し込み、前後に小さく動かしながらそぎ取ります。表と裏の両面にあります（このゲームでは1回の操作で両面とも取ったものとして扱います）。" });
+  prep.push(
+    { id: "head", label: "頭を落とす", tool: "knife", target: "head", req: before,
+      reqWhy: "うろこ" + (sp.zeigo ? "やぜいご" : "") + "は、頭が付いているうちに取ります。頭があるほうが魚を押さえやすく、頭の切り口や腹の中にうろこが入り込むのも防げます。",
+      how: "「出刃包丁」で胸ビレのすぐ後ろを、背から腹へ（または腹から背へ）斜めになぞり、「決定」を押します。",
+      lesson: sp.text.headLesson },
+    { id: "gut", label: "腹を開いて内臓を取る", tool: "knife", target: "gut", req: ["head"],
+      how: "「出刃包丁」で頭の切り口から肛門まで、腹の縁に沿ってドラッグし、「決定」を押します。",
+      lesson: sp.text.gutLesson },
+    { id: "rinse", label: "腹の中と血合いを洗う", tool: "water", req: ["gut"],
+      reqWhy: "腹の中を洗うのは、内臓を取り除いてからです。内臓と血合いを取ってから洗うと、汚れと臭みをまとめて落とせます。",
+      how: "「流水」を持ち、魚をタップして腹の中の血合いを洗い流します。",
+      lesson: sp.text.rinseLesson },
+    { id: "dry", label: "水気を拭き取る", tool: "paper", req: ["rinse"],
+      reqWhy: "水気を拭くのは洗った後です。",
+      how: "「ペーパー」を持ち、魚をタップして腹の中と表面の水気を拭き取ります。",
+      lesson: "水気が残ると傷みやすく、魚がまな板の上で滑って危険です。腹の中までしっかり拭き取ります。" });
+
   return {
-    id: "aji", name: "アジ", kana: "あじ", available: true, B, SPY, headT, targets,
-    eye: { x: 140, y: 168, r: 12 },
-    anusX: 335,
-    lateral: { arch: [[208, 167], [250, 156], [300, 160], [350, 175], [392, CY - 1]] },
-    summary: "身が締まった初心者向けの魚。アジ特有の硬いうろこ「ぜいご」を取るのが特徴です。",
-    // 下処理の工程。tool＝使う道具、gesture＝道具の使い方（tap：たたく／scrub：こする／line：線を引く）
-    prep: [
-      { id: "board", label: "まな板を固定する", tool: "cloth", gesture: "tap", req: [],
-        how: "道具箱から「濡れ布巾」を持ち、まな板をタップして下に敷きます。",
-        lesson: "まな板の下に固く絞った濡れ布巾を敷くと滑り止めになります。まな板が動くと包丁の軌道がぶれ、けがの原因になります。" },
-      { id: "scale", label: "うろこを取る", tool: "scaler", gesture: "scrub", req: [],
-        how: "「うろこ取り」を持ち、魚の体の上を尾から頭の方向へこするようにドラッグします（9割以上できれいになります）。",
-        lesson: "アジのうろこは細かく薄いので、うろこ取りや包丁の刃先で、尾から頭へ軽くこそげ取ります。うろこが残ると口当たりが悪くなります。" },
-      { id: "zeigo", label: "ぜいごを取る", tool: "knife", gesture: "line", target: "zeigo", req: [],
-        how: "「出刃包丁」を持ち、尾の付け根から体の中央に並ぶ硬いうろこ（ぜいご）に沿って頭の方向へドラッグし、「決定」を押します。",
-        lesson: "ぜいご（稜鱗）はアジの側線の後半に並ぶ硬いうろこです。包丁を寝かせて尾側から差し込み、前後に小さく動かしながらそぎ取ります。表と裏の両面にあります（このゲームでは1回の操作で両面とも取ったものとして扱います）。" },
-      { id: "head", label: "頭を落とす", tool: "knife", gesture: "line", target: "head", req: ["scale", "zeigo"],
-        reqWhy: "うろこやぜいごは、頭が付いているうちに取ります。頭があるほうが魚を押さえやすく、頭の切り口や腹の中にうろこが入り込むのも防げます。",
-        how: "「出刃包丁」で胸ビレのすぐ後ろを、背から腹へ（または腹から背へ）斜めになぞり、「決定」を押します。",
-        lesson: "胸ビレのすぐ後ろに包丁を入れ、頭を切り落とします。後ろに入れすぎると身が減り、前すぎると硬いえらぶたの骨が残ります。（このゲームでは表裏から入れる包丁を1本の線で表します）" },
-      { id: "gut", label: "腹を開いて内臓を取る", tool: "knife", gesture: "line", target: "gut", req: ["head"],
-        reqWhy: "この手順では、頭を落としてから腹を切り開きます。頭の切り口から内臓をかき出しやすくなります。（頭を付けたまま内臓を抜く方法もありますが、ここでは扱いません）",
-        how: "「出刃包丁」で頭の切り口から肛門まで、腹の縁に沿ってドラッグし、「決定」を押します。",
-        lesson: "腹を肛門まで浅く切り開き、内臓をかき出します。刃を深く入れると内臓を傷つけ、苦みや臭みが身に移ります。" },
-      { id: "rinse", label: "腹の中と血合いを洗う", tool: "water", gesture: "tap", req: ["gut"],
-        reqWhy: "腹の中を洗うのは、内臓を取り除いてからです。内臓と血合いを取ってから洗うと、汚れと臭みをまとめて落とせます。",
-        how: "「流水」を持ち、魚をタップして腹の中の血合いを洗い流します。",
-        lesson: "中骨に沿った血合い（腎臓）は臭みの原因です。包丁の先などでこそげてから、流水で洗い流します。" },
-      { id: "dry", label: "水気を拭き取る", tool: "paper", gesture: "tap", req: ["rinse"],
-        reqWhy: "水気を拭くのは洗った後です。",
-        how: "「ペーパー」を持ち、魚をタップして腹の中と表面の水気を拭き取ります。",
-        lesson: "水気が残ると傷みやすく、魚がまな板の上で滑って危険です。腹の中までしっかり拭き取ります。" },
-    ],
-    // 今は行わない作業（道具や包丁の使い方から判定する）
-    distractors: [
-      { id: "tail", label: "尾を切り落とす", target: "tail",
-        why: "三枚おろしでは尾は中骨に付けたままにします。尾の付け根は、身を中骨から切り離すときに包丁を入れる起点になります。" },
-      { id: "salt", label: "塩をふる", tool: "salt",
-        why: "塩をふるのは、おろした身を料理に使う段階の作業です。いまふると、身から水分が出て包丁さばきの邪魔になります。" },
-    ],
+    ...sp, B, SPY, headT, targets, tailX, prep,
+    headMidX: headFn(CY),
+    bodyLen: X1 - headT.xTop,
     cutLessons: {
       belly: "腹側の切り込みは、尻ビレの付け根に沿って入れます。刃先を中骨に当てる感覚で、浅く何度かに分けて引くと身を傷めません。（ゲームでは1本の線で表します）",
       back: "背ビレの際（きわ）に沿って包丁を入れます。背側の身は厚いので、中骨に届くまで何度かに分けて切り進めます。",
-      spine: "中骨に刃を沿わせると、骨の形にしたがって身を無駄なく外せます。刃が骨から離れると身が骨に残り、骨に食い込むと骨片が身に残ります。",
+      spine: "中骨に刃を沿わせると、骨の形にしたがって身を無駄なく外せます。刃が骨から離れると身が骨に残り、骨に食い込むと骨片が身に残ります。" + (sp.text.spineExtra || ""),
       flip: "片身を外したら、中骨が付いている側を下にして裏返します。2枚目も同じ要領で背側・腹側に切り込みを入れ、中骨から外します。",
     },
-    finishNote: "実際には、この後に腹骨をすき取り、骨抜きで小骨（血合い骨）を抜きます。このゲームでは三枚に分けるところまでを扱います。",
   };
 }
 
-// 追加予定の魚種（同じデータ構造で追加できる）。工程の違いを明示しておく。
-const FISH_LIST = [
-  buildAji(),
-  { id: "saba", name: "サバ", available: false,
-    summary: "準備中。ぜいごはありません。身がやわらかく傷みやすいので手早く作業し、腹骨と血合い骨（小骨）の処理が重要になります。" },
-  { id: "tai", name: "タイ", available: false,
-    summary: "準備中。うろこが大きく硬いので念入りに取ります。ヒレの棘が鋭く、骨も硬いため、頭の落とし方や包丁の扱いがアジと異なります。" },
+const FISH_SPECS = [
+  {
+    id: "aji", name: "アジ", level: 1, tolMul: 1,
+    summary: "身が締まっていて、初めての三枚おろしに向く魚。アジ特有の硬いうろこ「ぜいご」を取るのが特徴です。",
+    body: { X0: 100, X1: 600, CY: 185, ka: 0.55, kb: 0.9, depthD: 64, depthV: 57, snoutH: 5, pedH: 9, tailLen: 115, tailSpan: 62 },
+    spineDy: -3, headCut: { xTop: 228, xBot: 212 }, eye: { x: 140, y: 168, r: 12 }, gillX: 206,
+    pect: { x0: 204, x1: 300 }, pelvicX: 226, anusX: 335, scaleFrom: 150, scaleNeed: 0.9, scaleReach: 1,
+    zeigo: { a: 392, b: 594 }, lateral: "arch", pattern: null, spinyHand: false, fragile: false,
+    colors: { skin: ["#3d5f6e", "#6f8f95", "#c9b778", "#dfe3e2", "#f6f7f4"], flesh: ["#e9b2a2", "#d98f80", "#efc6b8"], chiai: "#9e3b3b" },
+    fins: [
+      { kind: "dorsal", x0: 250, x1: 302, h0: 30, h1: 16, spiny: true },
+      { kind: "dorsal", x0: 318, x1: 568, h0: 17, h1: 7 },
+      { kind: "anal", x0: 352, x1: 568, h0: 15, h1: 7 },
+    ],
+    finlets: [],
+    text: {
+      scaleHow: "「うろこ取り」を持ち、魚の体の上を尾から頭の方向へこするようにドラッグします（9割以上できれいになります）。",
+      scaleLesson: "アジのうろこは細かく薄いので、うろこ取りや包丁の刃先で、尾から頭へ軽くこそげ取ります。うろこが残ると口当たりが悪くなります。",
+      headLesson: "胸ビレのすぐ後ろに包丁を入れ、頭を切り落とします。後ろに入れすぎると身が減り、前すぎると硬いえらぶたの骨が残ります。（このゲームでは表裏から入れる包丁を1本の線で表します）",
+      gutLesson: "腹を肛門まで浅く切り開き、内臓をかき出します。刃を深く入れると内臓を傷つけ、苦みや臭みが身に移ります。",
+      rinseLesson: "中骨に沿った血合い（腎臓）は臭みの原因です。包丁の先などでこそげてから、流水で洗い流します。",
+    },
+    parts: {},
+    finishNote: "実際には、この後に腹骨をすき取り、骨抜きで小骨（血合い骨）を抜きます。",
+  },
+  {
+    id: "saba", name: "サバ", level: 2, tolMul: 0.9,
+    summary: "身がやわらかく割れやすい魚。ぜいごはありません。中骨から刃が離れると身が割れます。傷みやすいので手早さも大切です。",
+    body: { X0: 95, X1: 615, CY: 185, ka: 0.5, kb: 0.75, depthD: 46, depthV: 40, snoutH: 5, pedH: 7, tailLen: 100, tailSpan: 52 },
+    spineDy: -2, headCut: { xTop: 236, xBot: 220 }, eye: { x: 135, y: 172, r: 11 }, gillX: 214,
+    pect: { x0: 214, x1: 270 }, pelvicX: 238, anusX: 362, scaleFrom: 150, scaleNeed: 0.8, scaleReach: 1.1,
+    zeigo: null, lateral: "curve", pattern: "saba", spinyHand: false, fragile: true,
+    colors: { skin: ["#24505d", "#3f7d84", "#9fb5b4", "#dfe6e4", "#f4f5f2"], flesh: ["#d98a7c", "#c8695c", "#e7ad9f"], chiai: "#7d2222" },
+    fins: [
+      { kind: "dorsal", x0: 262, x1: 330, h0: 22, h1: 9, spiny: true },
+      { kind: "dorsal", x0: 410, x1: 462, h0: 16, h1: 7 },
+      { kind: "anal", x0: 418, x1: 466, h0: 14, h1: 7 },
+    ],
+    finlets: [482, 502, 522, 542, 562],
+    text: {
+      scaleHow: "「うろこ取り」を持ち、魚の上を尾から頭の方向へ軽くこすります（8割以上できれいになります）。",
+      scaleLesson: "サバのうろこはごく細かく、ほとんど目立ちません。包丁の刃先などで尾から頭へ軽くこそげる程度で十分です。強くこすると皮が傷みます。",
+      headLesson: "胸ビレのすぐ後ろに包丁を入れ、頭を切り落とします。サバは身がやわらかいので、押さえる手に力を入れすぎないようにします。",
+      gutLesson: "サバは「生き腐れ」と言われるほど内臓から傷みやすい魚です。腹を肛門まで浅く切り開き、手早く内臓を取り除きます。",
+      rinseLesson: "サバは中骨に沿った血合いが多く、臭みの原因になります。しっかりこそげて流水で洗い流します。",
+      spineExtra: "サバは身がやわらかいので、刃が中骨から離れると身が割れてしまいます。",
+    },
+    parts: {
+      dorsal: "サバの第1背ビレには細い棘があります。背側の切り込みはヒレの際に沿って入れます。",
+      finlet: "背と腹の後ろに並ぶ小さなヒレ（小離鰭）。サバの仲間の特徴です。",
+    },
+    finishNote: "実際には、この後に腹骨をすき取り、骨抜きで小骨（血合い骨）を抜きます。しめさばにする場合は、塩をふるのはおろした後です。",
+  },
+  {
+    id: "tai", name: "タイ", level: 3, tolMul: 0.85,
+    summary: "体高があり、うろこが大きく硬い魚。背ビレの棘が鋭く、骨も硬いので、手の置き場所と包丁の扱いに注意が必要です。",
+    body: { X0: 108, X1: 585, CY: 192, ka: 0.75, kb: 0.95, depthD: 90, depthV: 70, snoutH: 8, pedH: 11, tailLen: 100, tailSpan: 64 },
+    spineDy: -8, headCut: { xTop: 262, xBot: 240 }, eye: { x: 160, y: 160, r: 13 }, gillX: 238,
+    pect: { x0: 238, x1: 322 }, pelvicX: 262, anusX: 402, scaleFrom: 165, scaleNeed: 0.97, scaleReach: 0.7,
+    zeigo: null, lateral: "curve", pattern: "tai", spinyHand: true, fragile: false,
+    colors: { skin: ["#c44d61", "#de7a85", "#eda4a2", "#f4cdc4", "#f9e9e1"], flesh: ["#f3d8cf", "#ebc2b6", "#f7e4dd"], chiai: "#b35a5a" },
+    fins: [
+      { kind: "dorsal", x0: 262, x1: 525, h0: 26, h1: 14, spiny: true },
+      { kind: "anal", x0: 430, x1: 530, h0: 18, h1: 10, spiny: true },
+    ],
+    finlets: [],
+    text: {
+      scaleHow: "「うろこ取り」を持ち、尾から頭の方向へ、体のすみずみまでしっかりこすります（ほぼ全部取る必要があります）。",
+      scaleLesson: "タイのうろこは大きく硬いので、うろこ引きで尾から頭へ、ヒレの付け根や頭まわりまで念入りに取ります。飛び散りやすいので、ビニール袋の中で作業する方法もあります。",
+      headLesson: "タイは骨が硬いので、胸ビレの後ろから包丁の刃元を使って切り落とします。えらぶたやヒレの棘で手を切らないよう注意します。（実際には頭を割る・たすき落としなど、料理に合わせた落とし方があります）",
+      gutLesson: "腹を肛門まで切り開き、内臓を取り出します。タイは腹の身が厚いので、刃先だけを使って浅く切り開きます。",
+      rinseLesson: "中骨に沿った血合いを包丁の先でこそげ、流水でよく洗い流します。",
+      spineExtra: "タイは中骨が太く硬いので、刃を骨に当てたまま、力まずに何度かに分けて進めます。",
+    },
+    parts: {
+      dorsal: "タイの背ビレには鋭い棘があります。押さえる手を背ビレの上に置くと刺さるので注意します。",
+      anal: "尻ビレにも棘があります。腹側の切り込みは尻ビレの付け根に沿って入れます。",
+    },
+    finishNote: "実際には、この後に腹骨をすき取り、骨抜きで小骨を抜きます。タイの中骨や頭は、あら煮や潮汁に使えます。",
+  },
 ];
+const FISH_LIST = FISH_SPECS.map(buildFish);
+const FISH = Object.fromEntries(FISH_LIST.map((f) => [f.id, f]));
 
 const MODES = {
-  practice: { id: "practice", name: "練習モード", tol: 12, hints: Infinity, guide: "full",
-    desc: "切る位置と向きのガイドを表示。ヒントは何度でも使え、やり直しも自由です。" },
-  normal: { id: "normal", name: "通常モード", tol: 9, hints: 3, guide: "faint",
-    desc: "ガイドは薄い線だけ。向きは自分で判断します。ヒントは3回まで。" },
-  master: { id: "master", name: "職人モード", tol: 6, hints: 1, guide: "none",
-    desc: "ガイドなし。判定が厳しく、ヒント1回。「戻る」は1回ごとに手順点が1点減ります。" },
+  practice: { id: "practice", name: "練習モード", tol: 12, hints: Infinity, guide: "full", undoAfterFail: true,
+    desc: "切る位置と向き、手の置き場所を表示。ヒントは何度でも使え、失敗しても直前に戻れます。" },
+  normal: { id: "normal", name: "通常モード", tol: 9, hints: 3, guide: "faint", undoAfterFail: true,
+    desc: "ガイドは薄い線だけ。向きや手の位置は自分で判断します。ヒントは3回まで。" },
+  master: { id: "master", name: "職人モード", tol: 6, hints: 1, guide: "none", undoAfterFail: false,
+    desc: "ガイドなしで判定が厳しい。ヒント1回。「戻る」は1回ごとに手順点−1、失敗したら最初からです。" },
 };
 
 const PARTS = {
-  head: { name: "頭", text: "目・口・えらがある部分。この手順では、うろこ・ぜいごを取った後に胸ビレのすぐ後ろで切り落とします。" },
+  head: { name: "頭", text: "目・口・えらがある部分。うろこを取った後に、胸ビレのすぐ後ろで切り落とします。" },
   eye: { name: "目", text: "鮮度の目安になります。黒目がはっきりして澄んでいるものが新鮮です。" },
   gill: { name: "えら・えらぶた", text: "えらは鮮やかな赤色が新鮮の目安です。傷みやすく臭みのもとになるため、頭と一緒に取り除きます。" },
   pectoral: { name: "胸ビレ", text: "頭を落とすときの目印です。胸ビレのすぐ後ろに包丁を入れます。" },
@@ -311,13 +384,15 @@ const PARTS = {
   pelvic: { name: "腹ビレ", text: "腹側の小さなヒレ。頭を落とすと一緒に取れることが多い部分です。" },
   anal: { name: "尻ビレ", text: "肛門より後ろの腹側にあるヒレ。腹側の切り込みは尻ビレの付け根に沿って入れます。" },
   caudal: { name: "尾ビレ", text: "三枚おろしでは尾は中骨に付けたまま残します。" },
-  peduncle: { name: "尾の付け根", text: "身を中骨から切り離すとき、ここに包丁を差し込んで頭側へ進めます。" },
+  peduncle: { name: "尾の付け根", text: "身を中骨から切り離すとき、ここに包丁を差し込んで頭側へ進めます。ここで尾を切り落とさないこと。" },
   zeigo: { name: "ぜいご", text: "アジ特有の硬いうろこ（稜鱗）。側線の後半に並びます。口当たりが悪いので、尾から頭に向かってそぎ取ります。" },
   lateral: { name: "側線", text: "体の側面を走る線。中骨のおおよその位置の目安になります（中骨とぴったり重なるわけではありません）。" },
   spine: { name: "中骨（背骨）", text: "頭から尾まで体の中心を通る骨。三枚おろしはこの骨を境に上下の身を外し、身2枚と中骨1枚に分けます。" },
   anus: { name: "肛門", text: "腹を切り開くときの終点です。" },
   guts: { name: "内臓", text: "腹の中にあり、傷みやすく臭みの原因になります。下処理で取り除きます。" },
+  finlet: { name: "小離鰭", text: "" },
 };
+const partInfo = (F, key) => ({ name: PARTS[key].name, text: (F.parts && F.parts[key]) || PARTS[key].text });
 const KEY_PARTS = ["head", "caudal", "back", "belly", "spine"];
 
 /* =========================================================
@@ -328,8 +403,7 @@ function resample(pts, step) {
   const out = [pts[0]];
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
-    const d = Math.hypot(b.x - a.x, b.y - a.y);
-    const n = Math.max(1, Math.ceil(d / step));
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step));
     for (let k = 1; k <= n; k++) out.push({ x: lerp(a.x, b.x, k / n), y: lerp(a.y, b.y, k / n) });
   }
   return out;
@@ -360,11 +434,9 @@ function evalStroke(rawPts, t, tol) {
   const dirOk = t.dir === 0 || Math.sign(net) === t.dir;
   const devBins = sum.map((v, i) => (cnt[i] ? v / cnt[i] : null));
   const acc = clamp(1 - Math.max(0, meanAbs - 0.5 * tol) / (2.5 * tol), 0, 1) * clamp(cov / 0.9, 0, 1);
-  return {
-    key: t.key, name: t.name, n, cov, meanAbs, meanSigned: n ? sgnSum / n : 0,
-    inward: n ? inSum / n : 0, outward: n ? outSum / n : 0, farFrac: n ? far / n : 1,
-    dirOk, devBins, acc, tol,
-  };
+  return { key: t.key, name: t.name, n, cov, meanAbs, meanSigned: n ? sgnSum / n : 0,
+    inward: n ? inSum / n : 0, outward: n ? outSum / n : 0, farFrac: n ? far / n : 1, dirOk, devBins, acc, tol,
+    outFrac: pts.length ? 1 - n / pts.length : 1 };
 }
 function devAt(ev, t, x) {
   if (!ev) return 0;
@@ -377,13 +449,17 @@ function devAt(ev, t, x) {
   return 0;
 }
 
+// いま魚の身が残っている左右の範囲（頭・尾を落とした分を除く）
+function fishSpan(F, g) {
+  const left = g.prepDone.head ? F.headMidX + (g.cuts.head ? g.cuts.head.meanSigned : 0) : F.B.X0 - 7;
+  const right = g.tailOff ? F.tailX : F.B.X1 + F.B.tailLen;
+  return { left, right };
+}
 // 魚の外側へのはみ出し距離（安全判定用）
-function outsideDist(F, p, headOff) {
-  const { B } = F;
-  if (headOff) {
-    const hx = F.targets.head.fn(clamp(p.y, F.headT.yTop, F.headT.yBot));
-    if (p.x < hx) return Math.max(hx - p.x, p.y < B.top(hx) ? B.top(hx) - p.y : p.y > B.bot(hx) ? p.y - B.bot(hx) : 0);
-  }
+function outsideDist(F, p, g) {
+  const { B } = F; const sp = fishSpan(F, g);
+  if (p.x < sp.left) return sp.left - p.x + Math.max(0, p.y < B.CY - 60 ? B.CY - 60 - p.y : p.y > B.CY + 60 ? p.y - B.CY - 60 : 0);
+  if (p.x > sp.right) return p.x - sp.right;
   if (p.x < B.X0) return Math.hypot(B.X0 - p.x, Math.max(0, Math.abs(p.y - B.CY) - 5));
   if (p.x <= B.X1) {
     if (p.y < B.top(p.x)) return B.top(p.x) - p.y;
@@ -391,71 +467,109 @@ function outsideDist(F, p, headOff) {
     return 0;
   }
   const tx = p.x - B.X1;
-  if (tx <= B.tailLen) { const span = B.tailSpan * tx / B.tailLen + 10; return Math.max(0, Math.abs(p.y - B.CY) - span); }
-  return tx - B.tailLen;
+  const span = B.tailSpan * tx / B.tailLen + 10;
+  return Math.max(0, Math.abs(p.y - B.CY) - span);
+}
+
+// 狙いのない切り込み：身に入った長さと、魚を切断したかどうか
+function strayInfo(F, g, pts) {
+  const { B } = F; const sp = fishSpan(F, g);
+  const rs = resample(pts, 3);
+  const xL = Math.max(sp.left, B.X0) + 14, xR = Math.min(sp.right, B.X1) - 14;
+  let inside = 0, sawTop = false, sawBot = false, ySum = 0, xSum = 0;
+  for (const p of rs) {
+    if (p.x < Math.max(sp.left, B.X0) || p.x > Math.min(sp.right, B.X1)) continue;
+    const t = B.top(p.x), b = B.bot(p.x);
+    if (p.y >= t && p.y <= b) { inside += 3; ySum += p.y; xSum += p.x; }
+    if (p.x >= xL && p.x <= xR) { if (p.y <= t + 5) sawTop = true; if (p.y >= b - 5) sawBot = true; }
+  }
+  const n = inside / 3;
+  const mx = n ? xSum / n : B.CY, my = n ? ySum / n : B.CY;
+  const h = n ? B.bot(mx) - B.top(mx) : 1;
+  return { inside, severed: sawTop && sawBot && inside >= 0.7 * h, mx, my };
 }
 
 /* =========================================================
-   ゲーム状態
+   押さえる手（分身）の推奨位置と安全判定
    ========================================================= */
-/* 分身の「押さえる手」：推奨位置と安全判定（ゲーム内の手の位置で判定する） */
-const HAND_R = 30;
+const HAND_R = 30, HAND_HIT = 20;
 function handRec(F, key) {
-  const { B } = F;
+  const { B } = F; const mid = (F.headT.xTop + B.X1) / 2;
+  // 縁寄りに置く（身の薄い魚でも刃の通り道から離れるように）
+  const upper = (x) => B.top(x) + clamp(0.22 * B.Hd(x), 12, 24);
+  const lower = (x) => B.bot(x) - clamp(0.25 * B.Hv(x), 12, 24);
   const spots = {
-    scale: { x: 572, y: B.CY, why: "尾の付け根を押さえ、包丁は手から遠ざかる方向（頭側）へ動かします。" },
-    zeigo: { x: 165, y: B.CY + 4, why: "頭を押さえます。ぜいごは体の中ほどで終わるので、刃が手に届きません。" },
-    head: { x: 390, y: B.CY + 2, why: "胴の中ほどを押さえ、頭側に刃を入れます。手は刃より後ろに置きます。" },
-    gut: { x: 330, y: B.top(330) + 28, why: "背側を押さえます。腹側を切るときは、手を刃と反対側に置きます。" },
-    belly: { x: 410, y: B.top(410) + 22, why: "背側を押さえ、腹側に刃を入れます。刃の通り道に手を置きません。" },
-    back: { x: 410, y: B.bot(410) - 24, why: "腹側を押さえ、背側に刃を入れます。" },
-    spine: { x: 390, y: B.top(390) + 20, why: "身の上側に軽く手を添え、刃の進む先（頭側）に指を出さないようにします。" },
+    scale: { x: B.X1 - 26, y: B.CY, why: "尾の付け根を押さえ、うろこ取りは手から遠ざかる方向（頭側）へ動かします。" },
+    zeigo: { x: B.X0 + 62, y: B.CY + 6, why: "頭を押さえます。ぜいごは体の中ほどで終わるので、刃が手に届きません。" },
+    head: { x: mid + 10, y: B.CY + 2, why: "胴の中ほどを押さえ、頭側に刃を入れます。手は刃より後ろに置きます。" },
+    gut: { x: F.anusX - 10, y: B.top(F.anusX) + 0.35 * B.Hd(F.anusX), why: "背側を押さえます。腹側を切るときは、手を刃と反対側に置きます。" },
+    belly: { x: mid + 20, y: upper(mid + 20), why: "背側を押さえ、腹側に刃を入れます。刃の通り道に手を置きません。" },
+    back: { x: mid + 20, y: lower(mid + 20), why: "腹側を押さえ、背側に刃を入れます。" },
+    spine: { x: mid, y: upper(mid), why: "身の上側に軽く手を添え、刃の進む先（頭側）に指を出さないようにします。" },
   };
   return spots[key] || null;
 }
-function handCheck(F, hand, pts, headOff) {
-  const rs = resample(pts, 4);
-  let danger = rs.some((p) => Math.hypot(p.x - hand.x, p.y - hand.y) < HAND_R);
-  if (!danger && rs.length >= 2) {
+function handCheck(F, g, pts) {
+  const hand = g.hand;
+  const rs = resample(pts, 3);
+  let minD = Infinity; for (const p of rs) minD = Math.min(minD, Math.hypot(p.x - hand.x, p.y - hand.y));
+  const hit = minD < HAND_HIT;
+  let near = !hit && minD < HAND_HIT + 6;
+  if (!hit && !near && rs.length >= 2) {
     // 刃の進む先（終点からさらに先）も危険範囲とみなす
     const a = rs[Math.max(0, rs.length - 6)], b = rs[rs.length - 1];
     const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
     for (let k = 4; k <= 44; k += 4) {
       const q = { x: b.x + (b.x - a.x) / L * k, y: b.y + (b.y - a.y) / L * k };
-      if (Math.hypot(q.x - hand.x, q.y - hand.y) < HAND_R) { danger = true; break; }
+      if (Math.hypot(q.x - hand.x, q.y - hand.y) < HAND_R) { near = true; break; }
     }
   }
-  const loose = outsideDist(F, hand, headOff) > 4;
-  return { danger, loose };
+  const loose = outsideDist(F, hand, g) > 4;
+  let spike = false;
+  if (F.spinyHand) for (const fin of F.fins) {
+    if (fin.kind === "dorsal" && fin.spiny && hand.x > fin.x0 - 10 && hand.x < fin.x1 + 10 && hand.y - 14 < F.B.top(hand.x)) spike = true;
+  }
+  return { hit, near, loose, spike, minD };
 }
 
+/* =========================================================
+   ゲーム状態
+   ========================================================= */
 const SCALE_COLS = 20, SCALE_ROWS = 3;
 function scaleCells(F) {
-  const { B } = F; const cells = [];
+  const { B } = F; const cells = []; const x0 = F.scaleFrom, x1 = B.X1 - 12;
   for (let c = 0; c < SCALE_COLS; c++) {
-    const x = lerp(150, 588, (c + 0.5) / SCALE_COLS);
+    const x = lerp(x0, x1, (c + 0.5) / SCALE_COLS);
     for (let r = 0; r < SCALE_ROWS; r++) {
-      const t0 = r / SCALE_ROWS, t1 = (r + 1) / SCALE_ROWS;
-      cells.push({ x, w: (588 - 150) / SCALE_COLS, y0: lerp(B.top(x), B.bot(x), t0), y1: lerp(B.top(x), B.bot(x), t1) });
+      cells.push({ x, w: (x1 - x0) / SCALE_COLS, y0: lerp(B.top(x), B.bot(x), r / SCALE_ROWS), y1: lerp(B.top(x), B.bot(x), (r + 1) / SCALE_ROWS) });
     }
   }
   return cells;
 }
 
 function newGame(fishId, modeId) {
+  const F = FISH[fishId];
   return {
     phase: "inspect", fishId, modeId,
     seen: [], selPart: null, xray: false,
     prepDone: {},
     scaleClean: new Array(SCALE_COLS * SCALE_ROWS).fill(false), scaleGood: 0, scaleBad: 0,
-    side: "A", aRemoved: false,
-    cuts: {}, // head, gut, zeigo, A_belly, A_back, A_spine, B_...
-    pen: [], // {cat, pts, msg}
-    overshoot: 0, fast: 0, boardLate: false, rejects: 0,
-    hand: { x: 420, y: 186 }, handDanger: 0, handLoose: 0,
-    msg: { kind: "info", title: "魚を観察しましょう", text: "まな板の上のアジをよく見て、部位をクリック（タップ）してください。頭は左、腹は手前（画面下）に置いています。" },
+    side: "A", aRemoved: false, torn: { A: false, B: false }, tailOff: false, salted: false, prepLateChecked: false,
+    cuts: {}, gashes: [], damage: 0,
+    pen: [], // {cat: proc|safety|yield, pts, loss, side, msg}
+    overshoot: 0, fast: 0, boardLate: false, handNear: 0, handLoose: 0, spikeHits: 0,
+    hand: { x: (F.headT.xTop + F.B.X1) / 2 + 30, y: F.SPY + 2 },
+    fail: null,
+    msg: { kind: "info", title: "魚を観察しましょう", text: `まな板の上の${F.name}をよく見て、部位をクリック（タップ）してください。頭は左、腹は手前（画面下）に置いています。` },
     lesson: null,
   };
+}
+const any3 = (g) => ["A_belly", "A_back", "A_spine", "B_belly", "B_back", "B_spine"].some((k) => g.cuts[k]);
+const visibleFace = (g) => (g.side === "A" && !g.aRemoved ? "A" : "B");
+function stageIndex(g, F) {
+  if (g.phase === "inspect") return 0;
+  if (g.phase === "result") return 3;
+  return any3(g) || F.prep.every((s) => g.prepDone[s.id]) ? 2 : 1;
 }
 
 function nextAdvice(g, F) {
@@ -464,40 +578,37 @@ function nextAdvice(g, F) {
     if (rest.length) return { now: "部位の確認", next: "下処理", hint: `まだ確認していない主な部位：${rest.map((k) => PARTS[k].name).join("・")}。クリックして説明を読みましょう。中骨は「中骨を透かして見る」をオンにすると見えます。` };
     return { now: "部位の確認", next: "下処理", hint: "主な部位は確認できました。「下処理へ進む」を押しましょう。" };
   }
-  if (g.phase === "prep") {
-    const st = F.prep.find((s) => !g.prepDone[s.id]);
-    if (!st) return { now: "下処理完了", next: "三枚おろし", hint: "下処理が終わりました。" };
+  if (g.phase === "failed") return { now: "失敗", next: "やり直し", hint: "失敗の理由を読んで、もう一度挑戦しましょう。" };
+  const st = F.prep.find((s) => !g.prepDone[s.id]);
+  if (st && !any3(g)) {
     const after = F.prep[F.prep.indexOf(st) + 1];
     return { now: st.label, next: after ? after.label : "三枚おろし", hint: `次は「${st.label}」です。${st.how}`, step: st.id, tool: st.tool, target: st.target };
   }
-  if (g.phase === "cut") {
-    const s = g.side;
-    const need = ["belly", "back", "spine"].filter((k) => !g.cuts[`${s}_${k}`]);
-    if (s === "A" && !need.length) return { now: "片身が外れました", next: "裏返す", hint: "「手」を持って魚をタップすると裏返せます（「魚を裏返す」ボタンでも可）。", tool: "hand" };
-    const order = s === "A" ? ["belly", "back", "spine"] : ["back", "belly", "spine"];
-    const k = order.find((x) => need.includes(x));
-    const t = F.targets[k];
-    const where = { belly: "腹の縁の少し内側（尻ビレの付け根）を、頭側から尾へ", back: "背の縁の少し内側（背ビレの際）を、尾側から頭へ", spine: "体の中心の中骨の上を、尾の付け根から頭側へ" }[k];
-    const sideName = s === "A" ? "1枚目（表）" : "2枚目（裏）";
-    return { now: `${sideName}：${t.name}`, next: k === "spine" ? (s === "A" ? "裏返す" : "仕上がり確認") : "中骨に沿って切り離す", hint: `「出刃包丁」で${where}ドラッグして「決定」を押します。${s === "B" ? "裏返したので頭は右側にあります。" : ""}`, target: k, tool: "knife" };
-  }
-  return { now: "仕上がり確認", next: "—", hint: "" };
+  const s = g.side;
+  const need = ["belly", "back", "spine"].filter((k) => !g.cuts[`${s}_${k}`]);
+  if (s === "A" && g.aRemoved) return { now: "片身が外れました", next: "裏返す", hint: "「手」を持って魚をタップすると裏返せます（「魚を裏返す」ボタンでも可）。", tool: "hand" };
+  const order = s === "A" ? ["belly", "back", "spine"] : ["back", "belly", "spine"];
+  const k = order.find((x) => need.includes(x)) || "spine";
+  const t = F.targets[k];
+  const where = { belly: "腹の縁の少し内側（尻ビレの付け根）を、頭側から尾へ", back: "背の縁の少し内側（背ビレの際）を、尾側から頭へ", spine: "体の中心の中骨の上を、尾の付け根から頭側へ" }[k];
+  const sideName = s === "A" ? "1枚目（表）" : "2枚目（裏）";
+  return { now: `${sideName}：${t.name}`, next: k === "spine" ? (s === "A" ? "裏返す" : "仕上がり確認") : "中骨に沿って切り離す",
+    hint: `「出刃包丁」で${where}ドラッグして「決定」を押します。${s === "B" ? "裏返したので頭は右側にあります。" : ""}`, target: k, tool: "knife" };
 }
 
 /* =========================================================
    採点
    ========================================================= */
 function computeScore(g, F, mode, extra) {
-  const tol = mode.tol;
+  const tol = mode.tol * F.tolMul;
   const C = g.cuts;
   const sides = ["A", "B"];
-  // 作業手順 20
   const procPen = g.pen.filter((p) => p.cat === "proc").reduce((a, p) => a + p.pts, 0) + (mode.id === "master" ? extra.undos : 0);
   const procItems = g.pen.filter((p) => p.cat === "proc").map((p) => `−${p.pts}：${p.msg}`);
   if (mode.id === "master" && extra.undos) procItems.push(`−${extra.undos}：職人モードでの「戻る」${extra.undos}回`);
   const proc = clamp(20 - procPen, 0, 20);
 
-  // 切断線の正確さ 30
+  // 切断線の正確さ 30（実施しなかった線は0%）
   const W = [["head", 0.5], ["gut", 0.5], ["A_belly", 1], ["A_back", 1], ["A_spine", 1], ["B_belly", 1], ["B_back", 1], ["B_spine", 1]];
   let wsum = 0, asum = 0; for (const [k, w] of W) { wsum += w; asum += w * (C[k] ? C[k].acc : 0); }
   const accRate = asum / wsum;
@@ -508,49 +619,60 @@ function computeScore(g, F, mode, extra) {
   const sideYield = sides.map((s) => {
     const back = C[`${s}_back`], belly = C[`${s}_belly`], sp = C[`${s}_spine`];
     let loss = 0;
-    loss += 50 * Math.max(0, back.inward - slack) / 55;
-    loss += 50 * Math.max(0, belly.inward - slack) / 48;
-    loss += 0.8 * 100 * Math.max(0, sp.meanAbs - slack) / 110;
-    for (const c of [back, belly, sp]) loss += Math.max(0, 0.95 - c.cov) * 30;
-    loss += 100 * Math.max(0, C.head.meanSigned - slack) / 370;
-    return clamp(100 - loss, 30, 100);
+    if (back) loss += 50 * Math.max(0, back.inward - slack) / 55;
+    if (belly) loss += 50 * Math.max(0, belly.inward - slack) / 48;
+    if (sp) loss += 0.8 * 100 * Math.max(0, sp.meanAbs - slack) / 110;
+    for (const c of [back, belly, sp]) if (c) loss += Math.max(0, 0.95 - c.cov) * 30;
+    if (C.head) loss += 100 * Math.max(0, C.head.meanSigned - slack) / 370;
+    if (g.torn[s]) loss += 25;
+    for (const p of g.pen) if (p.cat === "yield" && (p.side === s || p.side === "both")) loss += p.loss;
+    const gl = g.gashes.filter((x) => x.face === s).reduce((a, x) => a + x.len, 0);
+    loss += 30 * gl / F.bodyLen;
+    return clamp(100 - loss, 0, 100);
   });
   const yieldPct = (sideYield[0] + sideYield[1]) / 2;
   const yieldScore = Math.round(25 * clamp((yieldPct - 70) / (97 - 70), 0, 1) * 10) / 10;
 
   // 骨の処理 15
-  const zeigoPts = 5 * clamp(C.zeigo.cov / 0.9, 0, 1);
-  const outs = sides.flatMap((s) => [C[`${s}_back`].outward, C[`${s}_belly`].outward]);
-  const outAvg = outs.reduce((a, b) => a + b, 0) / outs.length;
+  const scaleRatio = g.scaleClean.filter(Boolean).length / g.scaleClean.length;
+  const firstPts = F.zeigo ? 5 * clamp((C.zeigo ? C.zeigo.cov : 0) / 0.9, 0, 1) : 5 * clamp(scaleRatio / F.scaleNeed, 0, 1);
+  const outs = []; sides.forEach((s) => ["back", "belly"].forEach((k) => { if (C[`${s}_${k}`]) outs.push(C[`${s}_${k}`].outward); }));
+  const outAvg = outs.length ? outs.reduce((a, b) => a + b, 0) / outs.length : 2 * tol;
   const finPts = 5 * clamp(1 - Math.max(0, outAvg - slack) / (1.5 * tol), 0, 1);
-  const farAvg = (C.A_spine.farFrac + C.B_spine.farFrac) / 2;
+  const spines = sides.map((s) => C[`${s}_spine`]).filter(Boolean);
+  const farAvg = spines.length ? spines.reduce((a, c) => a + c.farFrac, 0) / spines.length : 1;
   const spinePts = 5 * clamp(1 - farAvg * 1.5, 0, 1);
-  const bone = Math.round((zeigoPts + finPts + spinePts) * 10) / 10;
+  const bone = Math.round((firstPts + finPts + spinePts) * 10) / 10;
 
   // 安全 10
   const boardPts = g.boardLate ? 0 : 3;
-  const handPts = clamp(3 - g.handDanger - 0.5 * g.handLoose, 0, 3);
+  const handPts = clamp(3 - g.handNear - 0.5 * g.handLoose - g.spikeHits, 0, 3);
   const overPts = clamp(2 - g.overshoot, 0, 2);
   const fastPts = clamp(2 - g.fast, 0, 2);
   const safety = boardPts + handPts + overPts + fastPts;
 
   const total = Math.round(proc + accuracy + yieldScore + bone + safety);
+  const yieldItems = g.pen.filter((p) => p.cat === "yield").map((p) => ({ tag: "e", text: `−${p.loss}%（${p.side === "both" ? "両身" : p.side === "A" ? "1枚目" : "2枚目"}）：${p.msg}` }));
   const cats = [
     { key: "proc", name: "作業手順", pts: proc, max: 20, items: [
       { tag: "m", text: procItems.length ? `減点の記録：${procItems.length}件` : "工程の順序・向きの誤りはありませんでした。" },
       ...procItems.map((t) => ({ tag: "m", text: t }))] },
     { key: "acc", name: "切断線の正確さ", pts: accuracy, max: 30, items: [
-      { tag: "m", text: `8本の切断線の平均的な正確さ ${Math.round(accRate * 100)}%（目標線からのずれと、切り込みの長さから計算。許容幅 ${tol}）` }] },
+      { tag: "m", text: `8本の切断線の平均的な正確さ ${Math.round(accRate * 100)}%（目標線からのずれと切り込みの長さから計算。許容幅 ${tol.toFixed(1)}。行わなかった線は0%）` }] },
     { key: "yield", name: "身の残り具合", pts: yieldScore, max: 25, items: [
       { tag: "e", text: `推定歩留まり ${yieldPct.toFixed(1)}%（理想的なおろし方を100%とした簡易モデル。1枚目 ${sideYield[0].toFixed(1)}%・2枚目 ${sideYield[1].toFixed(1)}%）` },
-      { tag: "e", text: "身側へのずれ・中骨からの離れ・切り込み不足・頭の落とし位置から推定しています。実際の重さは測っていません。" }] },
-    { key: "bone", name: "骨の処理", pts: bone, max: 15, items: [
-      { tag: "m", text: `ぜいごの除去範囲 ${Math.round(C.zeigo.cov * 100)}% → ${zeigoPts.toFixed(1)}/5` },
+      ...(g.torn.A || g.torn.B ? [{ tag: "m", text: `身割れ：${["A", "B"].filter((s) => g.torn[s]).map((s) => (s === "A" ? "1枚目" : "2枚目")).join("・")}（−25%）` }] : []),
+      ...(g.gashes.length ? [{ tag: "m", text: `狙いのない切り傷 ${g.gashes.length}本（身の傷み度 ${Math.round(g.damage)}%）` }] : []),
+      ...yieldItems,
+      { tag: "e", text: "身側へのずれ・中骨からの離れ・切り込み不足・頭の落とし位置・切り傷・手順の誤りから推定しています。実際の重さは測っていません。" }] },
+    { key: "bone", name: "骨・うろこの処理", pts: bone, max: 15, items: [
+      F.zeigo ? { tag: "m", text: `ぜいごの除去範囲 ${Math.round((C.zeigo ? C.zeigo.cov : 0) * 100)}% → ${firstPts.toFixed(1)}/5` }
+        : { tag: "m", text: `うろこの除去範囲 ${Math.round(scaleRatio * 100)}%（必要 ${Math.round(F.scaleNeed * 100)}%）→ ${firstPts.toFixed(1)}/5` },
       { tag: "e", text: `ヒレの骨の残り（背・腹の切り込みが外側へずれた量から推定）→ ${finPts.toFixed(1)}/5` },
       { tag: "e", text: `中骨への食い込み・骨片の混入（中骨から大きく外れた割合 ${Math.round(farAvg * 100)}% から推定）→ ${spinePts.toFixed(1)}/5` }] },
     { key: "safety", name: "安全な作業", pts: safety, max: 10, items: [
       { tag: "m", text: g.boardLate ? "まな板を固定する前に刃物を使いました → 0/3" : "刃物を使う前にまな板を固定しました → 3/3" },
-      { tag: "m", text: `押さえる手：刃の通り道に手があった ${g.handDanger}回・魚を押さえていなかった ${g.handLoose}回 → ${Number.isInteger(handPts) ? handPts : handPts.toFixed(1)}/3` },
+      { tag: "m", text: `押さえる手：刃の近くにあった ${g.handNear}回・魚を押さえていなかった ${g.handLoose}回${F.spinyHand ? `・棘に触れた ${g.spikeHits}回` : ""} → ${Number.isInteger(handPts) ? handPts : handPts.toFixed(1)}/3` },
       { tag: "m", text: `魚から大きくはみ出した切断操作 ${g.overshoot}回 → ${overPts}/2` },
       { tag: "e", text: `勢いよく引きすぎた操作 ${g.fast}回（ドラッグの速さから推定）→ ${fastPts}/2` },
       { tag: "e", text: "手の位置はゲーム内の分身の手で判定しています。包丁の角度や力の入れ具合は判定していません。" }] },
@@ -561,59 +683,66 @@ function computeScore(g, F, mode, extra) {
   else if (total >= 65) rank = { r: "B", name: "見習い上級" };
   else if (total >= 50) rank = { r: "C", name: "見習い" };
   else rank = { r: "D", name: "修行中" };
-  return { total, cats, rank, yieldPct, sideYield, accRate };
+  return { total, cats, rank, yieldPct, sideYield, accRate, tol };
 }
 
 function feedbackLists(g, F, sc, mode) {
-  const C = g.cuts; const good = [], bad = [], next = [];
-  const cutKeys = ["head", "gut", "A_belly", "A_back", "A_spine", "B_belly", "B_back", "B_spine"];
+  const C = g.cuts; const good = [], bad = [], next = []; const tol = sc.tol;
+  const cutKeys = ["head", "gut", "A_belly", "A_back", "A_spine", "B_belly", "B_back", "B_spine"].filter((k) => C[k]);
   const named = (k) => (k.startsWith("A_") ? "1枚目の" : k.startsWith("B_") ? "2枚目の" : "") + C[k].name;
   const sorted = cutKeys.slice().sort((a, b) => C[b].acc - C[a].acc);
-  const best = sorted[0], worst = sorted[sorted.length - 1];
-  if (C[best].acc >= 0.8) good.push(`${named(best)}は目標線から平均${C[best].meanAbs.toFixed(1)}のずれで、正確に切れています。`);
   const cat = Object.fromEntries(sc.cats.map((c) => [c.key, c]));
+  if (sorted.length && C[sorted[0]].acc >= 0.8) good.push(`${named(sorted[0])}は目標線から平均${C[sorted[0]].meanAbs.toFixed(1)}のずれで、正確に切れています。`);
   if (cat.proc.pts >= 18) good.push("工程の順序を正しく守れています。下処理から三枚おろしまでの流れが身についています。");
   if (cat.safety.pts >= 9) good.push("まな板の固定、押さえる手の置き場所、はみ出しのない包丁さばきなど、安全面に配慮できています。");
   if (sc.yieldPct >= 92) good.push(`身を大きく削らずにおろせています（推定歩留まり ${sc.yieldPct.toFixed(1)}%）。`);
-  if (C.zeigo.cov >= 0.9) good.push("ぜいごを尾の付け根から前半まで取り切れています。");
+  if (!g.gashes.length) good.push("余計な切り傷を入れずに作業できました。");
   if (!good.length) good.push("最後まで三枚に分けることができました。どこでずれたかを確認して、次に生かしましょう。");
 
-  const w = C[worst];
-  if (w.acc < 0.75) {
-    const t = F.targets[w.key];
+  const worst = sorted[sorted.length - 1];
+  if (worst && C[worst].acc < 0.75) {
+    const w = C[worst]; const t = F.targets[w.key];
     let dirText = "";
     if (t.inward) dirText = w.meanSigned * t.inward > 0 ? "身の内側へ" : "外側（縁）へ";
     else if (t.axis === "x") dirText = w.meanSigned < 0 ? "上（背側）へ" : "下（腹側）へ";
-    bad.push(`${named(worst)}が目標線から平均${w.meanAbs.toFixed(1)}${dirText ? "、主に" + dirText : ""}ずれています（許容幅 ${mode.tol}）。${w.cov < 0.85 ? `切り込みが全長の${Math.round(w.cov * 100)}%しか届いていません。` : ""}`);
+    bad.push(`${named(worst)}が目標線から平均${w.meanAbs.toFixed(1)}${dirText ? "、主に" + dirText : ""}ずれています（許容幅 ${tol.toFixed(1)}）。${w.cov < 0.85 ? `切り込みが全長の${Math.round(w.cov * 100)}%しか届いていません。` : ""}`);
   }
+  ["head", "gut"].concat(F.zeigo ? ["zeigo"] : []).forEach((k) => { if (!C[k]) bad.push(`「${F.targets[k].name}」を行わずに三枚おろしを進めました。`); });
   for (const s of ["A", "B"]) {
+    if (g.torn[s]) bad.push(`${s === "A" ? "1" : "2"}枚目で身が割れました。腹と背の切り込みを端まで入れてから、中骨に沿って切り離しましょう。${F.fragile ? `${F.name}は身がやわらかく、中骨から刃が離れても割れます。` : ""}`);
     const b = C[`${s}_back`], l = C[`${s}_belly`];
-    if (b.inward > 0.6 * mode.tol) bad.push(`${s === "A" ? "1" : "2"}枚目の背側の切り込みが身の内側に入りすぎ、背の身が削れています。背ビレの際をなぞる意識を持ちましょう。`);
-    if (l.inward > 0.6 * mode.tol) bad.push(`${s === "A" ? "1" : "2"}枚目の腹側の切り込みが身の内側に入りすぎています。腹の身は薄いので、縁に近いところを浅く切ります。`);
+    if (b && b.inward > 0.6 * tol) bad.push(`${s === "A" ? "1" : "2"}枚目の背側の切り込みが身の内側に入りすぎ、背の身が削れています。背ビレの際をなぞる意識を持ちましょう。`);
+    if (l && l.inward > 0.6 * tol) bad.push(`${s === "A" ? "1" : "2"}枚目の腹側の切り込みが身の内側に入りすぎています。腹の身は薄いので、縁に近いところを浅く切ります。`);
   }
-  if ((C.A_spine.meanAbs + C.B_spine.meanAbs) / 2 > 0.6 * mode.tol) bad.push("中骨に沿う切り離しで刃が骨から離れ、中骨に身が残っています。刃を中骨に当てたまま、すべらせる感覚で進めます。");
-  if (C.head.meanSigned > 0.6 * mode.tol) bad.push("頭を落とす位置が後ろ寄りで、肩の身が頭側に付いて捨てられています。胸ビレのすぐ後ろを狙いましょう。");
-  if (C.head.meanSigned < -0.8 * mode.tol) bad.push("頭を落とす位置が前寄りです。えらぶたの硬い骨が身に残りやすくなります。");
-  if (g.pen.some((p) => p.cat === "proc")) bad.push("工程の順序や包丁の向きで減点がありました。結果の「作業手順」の記録を確認しましょう。");
+  const spn = ["A", "B"].map((s) => C[`${s}_spine`]).filter(Boolean);
+  if (spn.length && spn.reduce((a, c) => a + c.meanAbs, 0) / spn.length > 0.6 * tol) bad.push("中骨に沿う切り離しで刃が骨から離れ、中骨に身が残っています。刃を中骨に当てたまま、すべらせる感覚で進めます。");
+  if (C.head && C.head.meanSigned > 0.6 * tol) bad.push("頭を落とす位置が後ろ寄りで、肩の身が頭側に付いて捨てられています。胸ビレのすぐ後ろを狙いましょう。");
+  if (C.head && C.head.meanSigned < -0.8 * tol) bad.push("頭を落とす位置が前寄りです。えらぶたの硬い骨が身に残りやすくなります。");
+  if (g.gashes.length) bad.push(`狙いのない切り傷が${g.gashes.length}本入り、身が傷みました（傷み度 ${Math.round(g.damage)}%）。包丁を入れる前に、どこを切るのかを決めましょう。`);
+  if (g.tailOff) bad.push("尾を切り落としたため、切り離しの起点がなくなり、尾側の身が崩れました。");
+  if (g.salted) bad.push("おろす前に塩をふったため、身から水分が出て滑りやすくなりました。");
+  if (g.pen.some((p) => p.cat === "proc")) bad.push("工程の順序や包丁の向きで減点がありました。採点の内訳の「作業手順」を確認しましょう。");
   if (g.boardLate) bad.push("まな板を固定する前に包丁を使いました。刃物を持つ前に、まず作業台を安定させます。");
-  if (g.handDanger) bad.push(`包丁の通り道や刃の進む先に、押さえる手を置いた場面が${g.handDanger}回ありました。手は刃と反対側に置き、指先は丸めて（猫の手）押さえます。`);
+  if (g.handNear) bad.push(`押さえる手が刃のすぐ近くにあった場面が${g.handNear}回ありました。手は刃と反対側に置き、指先は丸めて（猫の手）押さえます。`);
   if (g.handLoose) bad.push(`魚を押さえずに包丁を入れた場面が${g.handLoose}回ありました。魚が動くと切り口がぶれ、けがの原因にもなります。`);
+  if (g.spikeHits) bad.push(`背ビレの棘の上に手を置いた場面が${g.spikeHits}回ありました。${F.name}の背ビレの棘は鋭いので、手は棘を避けて置きます。`);
   if (g.overshoot) bad.push(`包丁の線が魚から大きくはみ出した操作が${g.overshoot}回ありました。刃先の行き先に手や体がないか常に意識しましょう。`);
   if (g.fast) bad.push(`勢いよく引きすぎた操作が${g.fast}回ありました。包丁は力まず、一定の速さで動かします。`);
-  if (!bad.length) bad.push("大きな改善点はありません。より厳しいモードに挑戦しましょう。");
+  if (!bad.length) bad.push("大きな改善点はありません。より厳しいモードや別の魚に挑戦しましょう。");
 
   const low = sc.cats.slice().sort((a, b) => a.pts / a.max - b.pts / b.max)[0];
   const tips = {
-    proc: "下処理の順番（固定 → うろこ → ぜいご → 頭 → 内臓 → 洗う）と、切り込みの向き（腹は頭→尾、背は尾→頭）を声に出して確認してから作業しましょう。",
+    proc: "下処理の順番（固定 → うろこ → 頭 → 内臓 → 洗う → 拭く）と、切り込みの向き（腹は頭→尾、背は尾→頭）を声に出して確認してから作業しましょう。",
     acc: "ガイド線の始点と終点を先に目で確認し、指やマウスをゆっくり一定の速さで動かしてみましょう。",
-    yield: "背と腹の切り込みは縁の近く、切り離しは中骨にぴったり沿わせることを意識して、身を削らないおろし方を目指しましょう。",
-    bone: "ぜいごは尾の付け根から前半まで取り切り、切り離しでは中骨から刃を離さないようにしましょう。",
+    yield: "背と腹の切り込みは縁の近く、切り離しは中骨にぴったり沿わせ、余計な切り傷を入れないことを意識しましょう。",
+    bone: F.zeigo ? "ぜいごは尾の付け根から前半まで取り切り、切り離しでは中骨から刃を離さないようにしましょう。" : "うろこを取り残さず、切り離しでは中骨から刃を離さないようにしましょう。",
     safety: "押さえる手を刃の通り道から外してから包丁を入れること。作業の最初にまな板を固定し、魚の外へ刃先が飛び出さないよう、短く区切って切り進めましょう。",
   };
   next.push(`重点課題「${low.name}」：${tips[low.key]}`);
   if (sc.total >= 80 && mode.id !== "master") next.push(`総合${sc.total}点です。次は${mode.id === "practice" ? "通常モード" : "職人モード"}で、ガイドの少ない状態に挑戦しましょう。`);
   else if (sc.total < 80) next.push("同じモードでもう一度挑戦し、80点（ランクA）を目指しましょう。");
   else next.push("職人モードで90点（ランクS）以上を安定して出せるよう練習しましょう。");
+  if (sc.total >= 80) { const nf = FISH_LIST.find((f) => f.level === F.level + 1); if (nf) next.push(`次の魚「${nf.name}」にも挑戦してみましょう。`); }
   return { good, bad, next };
 }
 
@@ -632,113 +761,154 @@ function targetPts(t, step = 4) {
   for (let s = lo; s <= hi + 0.01; s += step) pts.push(t.axis === "x" ? { x: s, y: t.fn(s) } : { x: t.fn(s), y: s });
   return pts;
 }
-function headClipPoly(F, dev) {
-  const { headT } = F; const d = dev || 0;
-  const k = (headT.xBot - headT.xTop) / (headT.yBot - headT.yTop);
-  const xAt = (y) => headT.xTop + d + k * (y - headT.yTop);
-  return `${xAt(0)},0 900,0 900,400 ${xAt(400)},400`;
+function caudalPath(B, cut) {
+  const X1 = B.X1, CY = B.CY;
+  return `M${X1 - 4} ${B.top(X1 - 4) + (cut ? 0 : 1)} C${X1 + 40} ${CY - 25} ${X1 + 80} ${CY - B.tailSpan * 0.8} ${X1 + B.tailLen} ${CY - B.tailSpan} C${X1 + B.tailLen * 0.83} ${CY - 25} ${X1 + 72} ${CY - 6} ${X1 + 70} ${CY} C${X1 + 72} ${CY + 6} ${X1 + B.tailLen * 0.83} ${CY + 25} ${X1 + B.tailLen} ${CY + B.tailSpan} C${X1 + 80} ${CY + B.tailSpan * 0.8} ${X1 + 40} ${CY + 25} ${X1 - 4} ${B.bot(X1 - 4) - 1} Z`;
+}
+// 頭・尾を落とした後に残る範囲のクリップ
+function remainClip(F, g) {
+  const { headT } = F;
+  let lb = "-100,400", lt = "-100,0";
+  if (g.prepDone.head) {
+    const d = g.cuts.head ? g.cuts.head.meanSigned : 0;
+    const k = (headT.xBot - headT.xTop) / (headT.yBot - headT.yTop);
+    const xAt = (y) => headT.xTop + d + k * (y - headT.yTop);
+    lb = `${xAt(400)},400`; lt = `${xAt(0)},0`;
+  }
+  const r = g.tailOff ? F.tailX : 900;
+  return `${lb} ${lt} ${r},0 ${r},400`;
 }
 
 function FishDefs() {
   return html`<defs>
-    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3d5f6e"/><stop offset="0.36" stop-color="#6f8f95"/>
-      <stop offset="0.5" stop-color="#c9b778"/><stop offset="0.58" stop-color="#dfe3e2"/>
-      <stop offset="1" stop-color="#f6f7f4"/>
-    </linearGradient>
-    <linearGradient id="flesh" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#e9b2a2"/><stop offset="0.5" stop-color="#d98f80"/><stop offset="1" stop-color="#efc6b8"/>
-    </linearGradient>
-    <linearGradient id="fin" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#9aa9a6"/><stop offset="1" stop-color="#c7cdb8"/>
-    </linearGradient>
-    <pattern id="scalePat" width="10" height="7" patternUnits="userSpaceOnUse">
-      <path d="M0 7 Q5 0 10 7" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.9"/>
-    </pattern>
-    <pattern id="grain" width="60" height="22" patternUnits="userSpaceOnUse">
-      <path d="M0 6 C15 3 30 9 60 5 M0 16 C20 19 40 13 60 17" fill="none" stroke="var(--board-grain)" stroke-width="1.2" opacity="0.7"/>
-    </pattern>
-    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
-      <path d="M0 0 L10 5 L0 10 Z" fill="var(--guide)"/>
-    </marker>
+    ${FISH_LIST.map((f) => html`<linearGradient key=${"s" + f.id} id=${"skin-" + f.id} x1="0" y1="0" x2="0" y2="1">
+      ${f.colors.skin.map((c, i) => html`<stop key=${i} offset=${[0, 0.36, 0.5, 0.58, 1][i]} stop-color=${c}/>`)}</linearGradient>`)}
+    ${FISH_LIST.map((f) => html`<linearGradient key=${"f" + f.id} id=${"flesh-" + f.id} x1="0" y1="0" x2="0" y2="1">
+      ${f.colors.flesh.map((c, i) => html`<stop key=${i} offset=${[0, 0.5, 1][i]} stop-color=${c}/>`)}</linearGradient>`)}
+    <linearGradient id="fin" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9aa9a6"/><stop offset="1" stop-color="#c7cdb8"/></linearGradient>
+    <linearGradient id="fin-tai" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#d9727d"/><stop offset="1" stop-color="#efb0a8"/></linearGradient>
+    <pattern id="scalePat" width="10" height="7" patternUnits="userSpaceOnUse"><path d="M0 7 Q5 0 10 7" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="0.9"/></pattern>
+    <pattern id="scalePatBig" width="16" height="11" patternUnits="userSpaceOnUse"><path d="M0 11 Q8 0 16 11" fill="none" stroke="#fff6f0" stroke-opacity="0.7" stroke-width="1.1"/></pattern>
+    <pattern id="grain" width="60" height="22" patternUnits="userSpaceOnUse"><path d="M0 6 C15 3 30 9 60 5 M0 16 C20 19 40 13 60 17" fill="none" stroke="var(--board-grain)" stroke-width="1.2" opacity="0.7"/></pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="var(--guide)"/></marker>
   </defs>`;
 }
 
 function Board({ cloth }) {
   return html`<g>
-    ${cloth && html`<rect x="66" y="${VIEW.y + VIEW.h - 18}" width="${VIEW.w - 12}" height="18" rx="4" fill="var(--cloth)" opacity="0.9"/>`}
-    <rect x="${VIEW.x + 4}" y="${VIEW.y + 4}" width="${VIEW.w - 8}" height="${VIEW.h - 14}" rx="12" fill="var(--board)"/>
-    <rect x="${VIEW.x + 4}" y="${VIEW.y + 4}" width="${VIEW.w - 8}" height="${VIEW.h - 14}" rx="12" fill="url(#grain)"/>
+    ${cloth && html`<rect x="66" y=${VIEW.y + VIEW.h - 18} width=${VIEW.w - 12} height="18" rx="4" fill="var(--cloth)" opacity="0.9"/>`}
+    <rect x=${VIEW.x + 4} y=${VIEW.y + 4} width=${VIEW.w - 8} height=${VIEW.h - 14} rx="12" fill="var(--board)"/>
+    <rect x=${VIEW.x + 4} y=${VIEW.y + 4} width=${VIEW.w - 8} height=${VIEW.h - 14} rx="12" fill="url(#grain)"/>
   </g>`;
+}
+
+function finD(B, fin) {
+  const edge = fin.kind === "dorsal" ? B.top : B.bot; const sg = fin.kind === "dorsal" ? -1 : 1;
+  const n = Math.max(2, Math.round((fin.x1 - fin.x0) / 12)); const rays = [];
+  let d = `M${fin.x0} ${edge(fin.x0)}`;
+  for (let i = 0; i <= n; i++) {
+    const x = lerp(fin.x0 + 4, fin.x1 - 6, i / n), h = lerp(fin.h0, fin.h1, i / n);
+    d += ` L${x.toFixed(1)} ${(edge(x) + sg * h).toFixed(1)}`; rays.push({ x, y0: edge(x), y1: edge(x) + sg * h });
+  }
+  return { d: d + ` L${fin.x1} ${edge(fin.x1)} Z`, rays };
 }
 
 function Fins({ F, p }) {
-  const { B } = F; const t = B.top, b = B.bot, CY = B.CY;
-  const X1 = B.X1;
-  const dorsal1 = `M250 ${t(250)} L262 ${t(262) - 30} L276 ${t(276) - 27} L290 ${t(290) - 18} L302 ${t(302)} Z`;
-  let d2 = `M318 ${t(318)} L322 ${t(322) - 17}`; for (let x = 340; x <= 560; x += 20) d2 += ` L${x} ${t(x) - lerp(15, 7, (x - 340) / 220)}`; d2 += ` L568 ${t(568)} Z`;
-  let an = `M352 ${b(352)} L356 ${b(356) + 15}`; for (let x = 372; x <= 560; x += 20) an += ` L${x} ${b(x) + lerp(13, 7, (x - 372) / 188)}`; an += ` L568 ${b(568)} Z`;
-  const caudal = `M${X1 - 4} ${t(X1 - 4) + 1} C${X1 + 40} ${CY - 25} ${X1 + 80} ${CY - 50} ${X1 + B.tailLen} ${CY - B.tailSpan} C${X1 + 95} ${CY - 25} ${X1 + 72} ${CY - 6} ${X1 + 70} ${CY} C${X1 + 72} ${CY + 6} ${X1 + 95} ${CY + 25} ${X1 + B.tailLen} ${CY + B.tailSpan} C${X1 + 80} ${CY + 50} ${X1 + 40} ${CY + 25} ${X1 - 4} ${b(X1 - 4) - 1} Z`;
-  const pelvic = `M226 ${b(226) - 2} L238 ${b(238) + 18} L250 ${b(250) + 3} Z`;
+  const { B } = F; const fill = F.id === "tai" ? "url(#fin-tai)" : "url(#fin)";
   return html`<g>
-    <path d=${caudal} fill="url(#fin)" stroke="#5f6f70" stroke-width="1" ...${p("caudal")}/>
-    <path d=${dorsal1} fill="url(#fin)" stroke="#5f6f70" stroke-width="1" ...${p("dorsal")}/>
-    <path d=${d2} fill="url(#fin)" stroke="#5f6f70" stroke-width="1" ...${p("dorsal")}/>
-    <path d=${an} fill="url(#fin)" stroke="#5f6f70" stroke-width="1" ...${p("anal")}/>
-    <path d=${pelvic} fill="url(#fin)" stroke="#5f6f70" stroke-width="1" ...${p("pelvic")}/>
+    <path d=${caudalPath(B)} fill=${fill} stroke="#5f6f70" stroke-width="1" ...${p("caudal")}/>
+    ${F.fins.map((fin, i) => { const f = finD(B, fin); return html`<g key=${i} ...${p(fin.kind)}>
+      <path d=${f.d} fill=${fill} stroke="#5f6f70" stroke-width="1"/>
+      ${fin.spiny && f.rays.map((r, j) => html`<path key=${j} d=${`M${r.x} ${r.y0} L${r.x} ${r.y1}`} stroke="#5a4a48" stroke-width="1" opacity="0.6"/>`)}
+    </g>`; })}
+    ${F.finlets.map((x) => html`<g key=${"fl" + x} ...${p("finlet")}>
+      <path d=${`M${x - 5} ${B.top(x)} L${x + 5} ${B.top(x + 5) - 7} L${x + 4} ${B.top(x + 4)} Z`} fill=${fill} stroke="#5f6f70" stroke-width="0.8"/>
+      <path d=${`M${x - 5} ${B.bot(x)} L${x + 5} ${B.bot(x + 5) + 7} L${x + 4} ${B.bot(x + 4)} Z`} fill=${fill} stroke="#5f6f70" stroke-width="0.8"/></g>`)}
+    <path d=${`M${F.pelvicX} ${B.bot(F.pelvicX) - 2} L${F.pelvicX + 12} ${B.bot(F.pelvicX + 12) + 18} L${F.pelvicX + 24} ${B.bot(F.pelvicX + 24) + 3} Z`} fill=${fill} stroke="#5f6f70" stroke-width="1" ...${p("pelvic")}/>
   </g>`;
 }
 
+function Pattern({ F }) {
+  const { B } = F; const out = [];
+  if (F.pattern === "saba") {
+    for (let i = 0; i < 17; i++) {
+      const x = F.headT.xTop - 10 + i * 22; if (x > B.X1 - 10) break;
+      const y0 = B.top(x) + 2, y1 = B.top(x) + B.Hd(x) * 0.62;
+      out.push(html`<path key=${i} d=${`M${x} ${y0} q 7 ${(y1 - y0) / 4} 0 ${(y1 - y0) / 2} q -7 ${(y1 - y0) / 4} 0 ${(y1 - y0) / 2}`} fill="none" stroke="#132a30" stroke-width="2.3" opacity="0.65"/>`);
+    }
+  }
+  if (F.pattern === "tai") {
+    for (let i = 0; i < 46; i++) {
+      const x = lerp(F.headT.xTop - 20, B.X1 - 30, frac(i * 0.618 + 0.11));
+      const y = B.top(x) + B.Hd(x) * (0.12 + 0.6 * frac(i * 0.377 + 0.3));
+      out.push(html`<circle key=${i} cx=${x} cy=${y} r="2.1" fill="#3f9fd4" opacity="0.85"/>`);
+    }
+  }
+  return html`<g clip-path=${"url(#bodyClip-" + F.id + ")"} pointer-events="none">${out}</g>`;
+}
+
+function lateralD(F) {
+  const { B } = F;
+  if (F.lateral === "arch") {
+    const CY = B.CY; const a = [[208, 167], [250, 156], [300, 160], [350, 175], [392, CY - 1]];
+    return `M${a[0][0]} ${a[0][1]} C${a[1][0]} ${a[1][1]} ${a[2][0]} ${a[2][1]} ${a[3][0]} ${a[3][1]} S${a[4][0] - 10} ${a[4][1]} ${a[4][0]} ${a[4][1]} L${B.X1} ${CY - 1}`;
+  }
+  const pts = []; const x0 = F.gillX + 4;
+  for (let x = x0; x <= B.X1; x += 8) { const t = (x - x0) / (B.X1 - x0); const s = t * t * (3 - 2 * t); pts.push({ x, y: lerp(B.top(x) + 0.3 * B.Hd(x), B.CY - 1, s) }); }
+  return polyD(pts);
+}
+
 function Skeleton({ F, remnant }) {
-  // remnant: x => 中骨に残った身の厚み
   const { B, SPY } = F; const parts = [];
-  const xs = []; for (let x = 232; x <= 596; x += 6) xs.push(x);
+  const xa = F.headT.xTop, xb = B.X1;
+  const xs = []; for (let x = xa + 4; x <= xb - 4; x += 6) xs.push(x);
   if (remnant) {
     const up = xs.map((x) => ({ x, y: SPY - 4 - remnant(x) })), dn = xs.slice().reverse().map((x) => ({ x, y: SPY + 4 + remnant(x) }));
-    parts.push(html`<path key="rem" d=${polyD(up.concat(dn)) + " Z"} fill="#d98f80" opacity="0.85"/>`);
+    parts.push(html`<path key="rem" d=${polyD(up.concat(dn)) + " Z"} fill=${F.colors.flesh[1]} opacity="0.85"/>`);
   }
-  for (let x = 240; x <= 584; x += 12) {
-    const h = B.Hd(x) * 0.7, v = x < F.anusX ? B.Hv(x) * 0.8 : B.Hv(x) * 0.6;
-    parts.push(html`<path key=${"n" + x} d=${`M${x} ${SPY - 3} L${x + 9} ${SPY - h}`} stroke="#f3eee6" stroke-width="1.6" opacity="0.9"/>`);
-    parts.push(html`<path key=${"h" + x} d=${`M${x} ${SPY + 3} ${x < F.anusX ? `Q${x - 2} ${SPY + v * 0.6} ${x + 8} ${SPY + v}` : `L${x + 9} ${SPY + v}`}`} fill="none" stroke="#f3eee6" stroke-width="1.6" opacity="0.9"/>`);
+  const w = F.id === "tai" ? 2.2 : 1.6;
+  for (let x = xa + 12; x <= xb - 16; x += 12) {
+    const h = (B.CY - B.top(x)) * 0.85 - (B.CY - SPY), v = x < F.anusX ? B.Hv(x) * 0.8 : B.Hv(x) * 0.6;
+    parts.push(html`<path key=${"n" + x} d=${`M${x} ${SPY - 3} L${x + 9} ${SPY - h}`} stroke="#f3eee6" stroke-width=${w} opacity="0.9"/>`);
+    parts.push(html`<path key=${"h" + x} d=${`M${x} ${SPY + 3} ${x < F.anusX ? `Q${x - 2} ${SPY + v * 0.6} ${x + 8} ${SPY + v}` : `L${x + 9} ${SPY + v}`}`} fill="none" stroke="#f3eee6" stroke-width=${w} opacity="0.9"/>`);
   }
-  parts.push(html`<path key="sp" d=${`M228 ${SPY} L600 ${SPY}`} stroke="#fbf8f2" stroke-width="7" stroke-linecap="round"/>`);
-  parts.push(html`<path key="sp2" d=${`M228 ${SPY} L600 ${SPY}`} stroke="#c9bfb0" stroke-width="1" stroke-dasharray="3 5"/>`);
+  parts.push(html`<path key="sp" d=${`M${xa} ${SPY} L${xb} ${SPY}`} stroke="#fbf8f2" stroke-width=${F.id === "tai" ? 9 : 7} stroke-linecap="round"/>`);
+  parts.push(html`<path key="sp2" d=${`M${xa} ${SPY} L${xb} ${SPY}`} stroke="#c9bfb0" stroke-width="1" stroke-dasharray="3 5"/>`);
   return html`<g>${parts}</g>`;
 }
 
 function filletPath(F, g, s, offY = 0) {
   const { B, targets, SPY } = F; const C = g.cuts;
-  const hx = targets.head.fn(B.CY) + (C.head ? C.head.meanSigned : 0) + 4;
+  const hx = (g.prepDone.head ? F.headMidX + (C.head ? C.head.meanSigned : 0) : F.gillX) + 4;
+  const right = g.tailOff ? F.tailX - 2 : B.X1 - 8;
   const back = C[`${s}_back`], belly = C[`${s}_belly`];
-  const xs = []; for (let x = Math.max(hx, 226); x <= 592; x += 5) xs.push(x);
+  const xs = []; for (let x = Math.max(hx, targets.belly.a); x <= right; x += 5) xs.push(x);
   const topPts = xs.map((x) => ({ x, y: clamp(targets.back.fn(x) + devAt(back, targets.back, x), B.top(x) + 1, SPY - 2) + offY }));
   const botPts = xs.slice().reverse().map((x) => ({ x, y: clamp(targets.belly.fn(x) + devAt(belly, targets.belly, x), SPY + 2, B.bot(x) - 1) + offY }));
-  return polyD(topPts.concat([{ x: 598, y: SPY + offY }], botPts)) + " Z";
+  return polyD(topPts.concat([{ x: right + 6, y: SPY + offY }], botPts)) + " Z";
 }
 
-function Fillet({ F, g, s, offY = 0, mirror }) {
+function Fillet({ F, g, s, offY = 0 }) {
   const { SPY, targets, B } = F; const C = g.cuts;
   const back = C[`${s}_back`], belly = C[`${s}_belly`];
   const ticks = [];
-  for (let x = 240; x <= 580; x += 8) {
-    const db = devAt(back, targets.back, x) * targets.back.inward;
-    if (db < -0.6 * back.tol) { const y = clamp(targets.back.fn(x) + devAt(back, targets.back, x), B.top(x) + 1, SPY) + offY; ticks.push(html`<path key=${"b" + x} d=${`M${x} ${y} l3 7`} stroke="#fffaf0" stroke-width="1.6"/>`); }
-    const dl = devAt(belly, targets.belly, x) * targets.belly.inward;
-    if (dl < -0.6 * belly.tol) { const y = clamp(targets.belly.fn(x) + devAt(belly, targets.belly, x), SPY, B.bot(x) - 1) + offY; ticks.push(html`<path key=${"l" + x} d=${`M${x} ${y} l3 -7`} stroke="#fffaf0" stroke-width="1.6"/>`); }
+  for (let x = targets.back.a + 8; x <= B.X1 - 20; x += 8) {
+    if (back && devAt(back, targets.back, x) * targets.back.inward < -0.6 * back.tol) { const y = clamp(targets.back.fn(x) + devAt(back, targets.back, x), B.top(x) + 1, SPY) + offY; ticks.push(html`<path key=${"b" + x} d=${`M${x} ${y} l3 7`} stroke="#fffaf0" stroke-width="1.6"/>`); }
+    if (belly && devAt(belly, targets.belly, x) * targets.belly.inward < -0.6 * belly.tol) { const y = clamp(targets.belly.fn(x) + devAt(belly, targets.belly, x), SPY, B.bot(x) - 1) + offY; ticks.push(html`<path key=${"l" + x} d=${`M${x} ${y} l3 -7`} stroke="#fffaf0" stroke-width="1.6"/>`); }
   }
-  const tr = mirror ? `translate(${MIRROR_C} 0) scale(-1 1)` : undefined;
-  return html`<g transform=${tr}>
-    <path d=${filletPath(F, g, s, offY)} fill="url(#flesh)" stroke="#b86b5e" stroke-width="1.2"/>
-    <path d=${`M250 ${SPY + offY} Q420 ${SPY - 3 + offY} 590 ${SPY + offY}`} stroke="#9e3b3b" stroke-width="5" opacity="0.45" fill="none" stroke-linecap="round"/>
-    ${ticks}
+  const mid = (targets.belly.a + B.X1) / 2;
+  const gashes = g.gashes.filter((x) => x.face === s).map((x, i) => html`<path key=${"g" + i} d=${polyD(x.pts.map((p) => ({ x: p.x, y: p.y + offY })))} fill="none" stroke="#7a2a22" stroke-width="2.4" opacity="0.8"/>`);
+  return html`<g>
+    <path d=${filletPath(F, g, s, offY)} fill=${"url(#flesh-" + F.id + ")"} stroke="#b86b5e" stroke-width="1.2"/>
+    <path d=${`M${targets.belly.a + 20} ${SPY + offY} Q${mid} ${SPY - 3 + offY} ${B.X1 - 10} ${SPY + offY}`} stroke=${F.colors.chiai} stroke-width="5" opacity="0.45" fill="none" stroke-linecap="round"/>
+    ${g.torn[s] && html`<path d=${`M${mid - 20} ${B.top(mid) + 10 + offY} l8 14 l-10 12 l9 14 l-8 13 l10 14 l-6 12`} fill="none" stroke="#6d1f1f" stroke-width="3"/>`}
+    ${ticks}${gashes}
   </g>`;
 }
 
 function GuideLine({ t, faint, arrow }) {
   const pts = targetPts(t);
-  let ordered = pts;
-  if (t.dir === -1) ordered = pts.slice().reverse();
+  const ordered = t.dir === -1 ? pts.slice().reverse() : pts;
   return html`<g pointer-events="none">
     <path d=${polyD(ordered)} fill="none" stroke="var(--guide)" stroke-width=${faint ? 2 : 3} stroke-dasharray=${faint ? "4 6" : "9 6"} opacity=${faint ? 0.55 : 0.95}
       marker-end=${arrow && t.dir !== 0 ? "url(#arrow)" : undefined}/>
@@ -778,9 +948,9 @@ function Toolbar({ tool, onTool, suggest }) {
 }
 
 /* 分身：押さえる手（猫の手）と包丁 */
-function Hand({ x, y, state, flip }) {
-  const ring = state === "danger" ? "var(--bad)" : state === "loose" ? "var(--warn)" : null;
-  return html`<g transform=${`translate(${x} ${y})${flip ? " scale(-1 1)" : ""}`} pointer-events="none">
+function Hand({ x, y, state }) {
+  const ring = state === "danger" ? "var(--bad)" : state === "warn" ? "var(--warn)" : null;
+  return html`<g transform=${`translate(${x} ${y})`} pointer-events="none">
     <path d="M-15 10 C-18 30 -20 48 -22 66 L22 66 C20 48 18 30 15 10 Z" fill="#3c5d8f" opacity="0.92"/>
     <path d="M-22 58 L22 58" stroke="#fff" stroke-opacity="0.35" stroke-width="2"/>
     <ellipse cx="0" cy="2" rx="23" ry="18" fill="#f1c9a3" stroke="#b5845d" stroke-width="1.3"/>
@@ -801,17 +971,62 @@ function Knife({ x, y, angle, resting }) {
   </g>`;
 }
 
+/* 魚の皮側（表）の描画 */
+function FishSkin({ F, g, p, sel, clickable, onPart, cells }) {
+  const { B } = F; const outline = bodyOutline(B);
+  const zeigoMarks = [];
+  if (F.zeigo) for (let x = F.zeigo.a + 4; x <= F.zeigo.b - 4; x += 8) {
+    let removed = false;
+    if (g.cuts.zeigo) { const t = F.targets.zeigo; const bi = clamp(Math.floor((x - t.a) / (t.b - t.a) * NBIN), 0, NBIN - 1); removed = g.cuts.zeigo.devBins[bi] != null; }
+    if (!removed) zeigoMarks.push(html`<path key=${x} d=${`M${x + 3} ${B.CY - 6} L${x - 3} ${B.CY - 1} L${x + 3} ${B.CY + 4}`} fill="none" stroke="#e8e2c8" stroke-width="1.6" opacity="0.95"/>`);
+  }
+  const latD = lateralD(F);
+  const pe = F.pect;
+  const face = visibleFace(g);
+  return html`<g>
+    <${Fins} F=${F} p=${p}/>
+    <path d=${outline} fill=${"url(#skin-" + F.id + ")"} stroke="#45585e" stroke-width="1.4" style=${clickable ? { cursor: "pointer" } : undefined} onClick=${clickable ? () => onPart(null) : undefined}/>
+    <${Pattern} F=${F}/>
+    ${clickable && html`<g>
+      <path d=${`M${B.X0 - 7} ${B.CY} ${polyD(targetPts({ axis: "x", a: B.X0, b: F.gillX + 8, fn: B.top })).replace("M", "L")} L${F.gillX + 8} ${B.bot(F.gillX + 8)} L${B.X0} ${B.bot(B.X0)} Z`} fill=${sel("head") ? "#ffffff" : "transparent"} opacity=${sel("head") ? 0.25 : 1} ...${p("head")}/>
+      <path d=${polyD(targetPts({ axis: "x", a: F.headT.xTop + 70, b: B.X1 - 10, fn: (x) => B.top(x) + 8 }))} stroke=${sel("back") ? "#fff" : "transparent"} stroke-opacity="0.5" stroke-width="16" fill="none" ...${p("back")}/>
+      <path d=${polyD(targetPts({ axis: "x", a: F.anusX + 10, b: B.X1 - 10, fn: (x) => B.bot(x) - 8 }))} stroke=${sel("belly") ? "#fff" : "transparent"} stroke-opacity="0.5" stroke-width="16" fill="none" ...${p("belly")}/>
+      <path d=${`M${F.headT.xBot} ${B.CY + 12} L${F.anusX - 6} ${B.CY + 12} L${F.anusX - 6} ${B.bot(F.anusX) - 14} L${F.headT.xBot} ${B.bot(F.headT.xBot) - 14} Z`} fill=${sel("guts") ? "#c45" : "transparent"} opacity=${sel("guts") ? 0.35 : 1} ...${p("guts")}/>
+      <rect x=${B.X1 - 40} y=${B.CY - 14} width="44" height="28" fill=${sel("peduncle") ? "#fff" : "transparent"} opacity=${sel("peduncle") ? 0.35 : 1} ...${p("peduncle")}/>
+    </g>`}
+    ${!g.prepDone.scale && cells.map((c, i) => (g.scaleClean[i] ? null : html`<rect key=${i} x=${c.x - c.w / 2} y=${c.y0} width=${c.w + 0.5} height=${c.y1 - c.y0 + 0.5} fill=${F.id === "tai" ? "url(#scalePatBig)" : "url(#scalePat)"} clip-path=${"url(#bodyClip-" + F.id + ")"} pointer-events="none"/>`))}
+    <path d=${latD} fill="none" stroke="#2f4750" stroke-width="1.2" opacity="0.6" pointer-events="none"/>
+    ${clickable && html`<path d=${latD} fill="none" stroke=${sel("lateral") ? "#fff" : "transparent"} stroke-opacity="0.6" stroke-width="10" ...${p("lateral")}/>`}
+    ${F.zeigo && html`<g ...${p("zeigo")}>${zeigoMarks}${clickable && html`<rect x=${F.zeigo.a} y=${B.CY - 8} width=${F.zeigo.b - F.zeigo.a} height="14" fill=${sel("zeigo") ? "#fff" : "transparent"} opacity="0.4"/>`}</g>`}
+    <path d=${`M${F.gillX} ${B.top(F.gillX) + 10} C${F.gillX + 14} ${B.CY - 20} ${F.gillX + 14} ${B.CY + 18} ${F.gillX - 2} ${B.bot(F.gillX) - 8}`} fill="none" stroke="#2f454b" stroke-width="2.2" opacity="0.8" pointer-events="none"/>
+    ${clickable && html`<path d=${`M${F.gillX - 10} ${B.top(F.gillX - 10) + 8} C${F.gillX + 8} ${B.CY - 20} ${F.gillX + 8} ${B.CY + 18} ${F.gillX - 10} ${B.bot(F.gillX - 10) - 8} L${F.gillX - 20} ${B.bot(F.gillX - 20) - 10} C${F.gillX - 6} ${B.CY + 10} ${F.gillX - 6} ${B.CY - 10} ${F.gillX - 20} ${B.top(F.gillX - 20) + 10} Z`} fill=${sel("gill") ? "#fff" : "transparent"} opacity="0.35" ...${p("gill")}/>`}
+    <path d=${`M${B.X0 - 6} ${B.CY + 2} Q${B.X0 + 12} ${B.CY + 10} ${B.X0 + 26} ${B.CY + 7}`} fill="none" stroke="#2f454b" stroke-width="1.4" pointer-events="none"/>
+    <circle cx=${F.eye.x} cy=${F.eye.y} r=${F.eye.r} fill="#f4f1e6" stroke="#333" stroke-width="1.2" ...${p("eye")}/>
+    <circle cx=${F.eye.x + 1} cy=${F.eye.y} r=${F.eye.r * 0.55} fill="#111" pointer-events="none"/>
+    <circle cx=${F.eye.x - 2} cy=${F.eye.y - 3} r="2" fill="#fff" pointer-events="none"/>
+    <path d=${`M${pe.x0} ${B.CY + 8} C${pe.x0 + 28} ${B.CY + 2} ${pe.x1 - 32} ${B.CY + 4} ${pe.x1} ${B.CY + 4} C${pe.x1 - 30} ${B.CY + 12} ${pe.x0 + 28} ${B.CY + 18} ${pe.x0 + 2} ${B.CY + 16} Z`} fill=${F.id === "tai" ? "url(#fin-tai)" : "url(#fin)"} stroke="#5f6f70" stroke-width="1" ...${p("pectoral")}/>
+    <circle cx=${F.anusX} cy=${B.bot(F.anusX) - 3} r="3" fill="#7a5a52" ...${p("anus")}/>
+    ${clickable && html`<circle cx=${F.anusX} cy=${B.bot(F.anusX) - 3} r="10" fill="transparent" ...${p("anus")}/>`}
+    ${g.cuts.gut && html`<path d=${polyD(targetPts({ axis: "x", a: F.targets.gut.a, b: F.anusX, fn: (x) => B.bot(x) - 4 }))} stroke=${g.prepDone.rinse ? "#b0574d" : "#4a1c1c"} stroke-width="4" fill="none" stroke-linecap="round"/>`}
+    ${["belly", "back", "spine"].map((k) => g.cuts[`${g.side}_${k}`]).filter((c) => c && c.pts).map((c) => html`<path key=${c.key} d=${polyD(c.pts)} fill="none" stroke="var(--slit)" stroke-width="3" stroke-linecap="round" opacity="0.85"/>`)}
+    ${g.gashes.filter((x) => x.face === face).map((x, i) => html`<path key=${"gash" + i} d=${polyD(x.pts)} fill="none" stroke="#7a1f1f" stroke-width="3.2" stroke-linecap="round" opacity="0.9"/>`)}
+    ${g.salted && html`<g pointer-events="none">${Array.from({ length: 30 }, (_, i) => { const x = lerp(F.headT.xTop, B.X1 - 20, frac(i * 0.618)); return html`<circle key=${i} cx=${x} cy=${lerp(B.top(x) + 8, B.bot(x) - 8, frac(i * 0.41))} r="1.6" fill="#fff"/>`; })}</g>`}
+    ${(g.xray || sel("spine")) && html`<g opacity="0.75" pointer-events="none"><${Skeleton} F=${F}/></g>`}
+    ${clickable && html`<path d=${`M${F.headT.xTop} ${F.SPY} L${B.X1} ${F.SPY}`} stroke="transparent" stroke-width="12" ...${p("spine")}/>`}
+  </g>`;
+}
+
 /* =========================================================
    まな板ビュー（メインの操作SVG）
    ========================================================= */
-function FishView({ F, g, mode, guideKeys, draft, onPart, drawMode, onStroke, onScrub, hintFlash, onHand, handHint, tool, onTap }) {
+function FishView({ F, g, guideKeys, draft, onPart, drawMode, onStroke, onScrub, hintFlash, onHand, handHint, tool, onTap }) {
   const svgRef = useRef(null);
   const stroke = useRef(null);
   const [live, setLive] = useState(null);
   const [hover, setHover] = useState(null);
   const lastAngle = useRef(Math.PI);
   const { B } = F;
-  const mirrored = g.phase === "cut" && g.side === "B";
+  const mirrored = g.side === "B" && g.phase !== "inspect";
   const toFish = (p) => (mirrored ? { x: MIRROR_C - p.x, y: p.y } : p);
 
   const getPt = (e) => {
@@ -863,107 +1078,68 @@ function FishView({ F, g, mode, guideKeys, draft, onPart, drawMode, onStroke, on
     else if (s.pts.length >= 2 && pathLen(s.pts) > 12) onStroke({ pts: s.pts, dur });
   };
 
-  const headOff = !!g.prepDone.head && g.phase !== "inspect";
-  const showSkin = !(g.phase === "cut" && g.side === "A" && g.aRemoved);
+  const showSkin = !(g.side === "A" && g.aRemoved);
   const clickable = g.phase === "inspect";
-  const p = (key) => (clickable ? { onClick: () => onPart(key), style: { cursor: "pointer" }, className: g.selPart === key ? "part sel" : "part" } : {});
+  const p = (key) => (clickable ? { onClick: () => onPart(key), style: { cursor: "pointer" } } : {});
   const sel = (key) => g.selPart === key && clickable;
-  const outline = bodyOutline(B);
   const cells = useMemo(() => scaleCells(F), [F]);
-  const sideCuts = ["belly", "back", "spine"].map((k) => g.cuts[`${g.side}_${k}`]).filter(Boolean);
-
-  const zeigoMarks = [];
-  for (let x = 396; x <= 590; x += 8) {
-    let removed = false;
-    if (g.cuts.zeigo) { const t = F.targets.zeigo; const bi = clamp(Math.floor((x - t.a) / (t.b - t.a) * NBIN), 0, NBIN - 1); removed = g.cuts.zeigo.devBins[bi] != null; }
-    if (!removed) zeigoMarks.push(html`<path key=${x} d=${`M${x + 3} ${B.CY - 6} L${x - 3} ${B.CY - 1} L${x + 3} ${B.CY + 4}`} fill="none" stroke="#e8e2c8" stroke-width="1.6" opacity="0.95"/>`);
-  }
-  const lat = F.lateral.arch;
-  const latD = `M${lat[0][0]} ${lat[0][1]} C${lat[1][0]} ${lat[1][1]} ${lat[2][0]} ${lat[2][1]} ${lat[3][0]} ${lat[3][1]} S${lat[4][0] - 10} ${lat[4][1]} ${lat[4][0]} ${lat[4][1]} L${B.X1} ${B.CY - 1}`;
-  const clipDev = g.cuts.head ? g.cuts.head.meanSigned : 0;
   const tr = mirrored ? `translate(${MIRROR_C} 0) scale(-1 1)` : undefined;
   const liveStroke = live && drawMode === "line" ? live : null;
 
   // ---- 分身（手と包丁）。鏡映時も画面座標で描く ----
-  const scr = (p) => (mirrored ? { x: MIRROR_C - p.x, y: p.y } : p);
+  const scr = (q) => (mirrored ? { x: MIRROR_C - q.x, y: q.y } : q);
   const scrAng = (a) => (mirrored ? Math.PI - a : a);
-  let knife;
-  if (live && live.length >= 2) {
+  let knife = null;
+  if (tool === "knife" && live && live.length >= 2) {
     const b = live[live.length - 1], a = live[Math.max(0, live.length - 5)];
     if (Math.hypot(b.x - a.x, b.y - a.y) > 3) lastAngle.current = Math.atan2(b.y - a.y, b.x - a.x);
     const q = scr(b); knife = { x: q.x, y: q.y, angle: scrAng(lastAngle.current) };
-  } else if (tool === "knife" && hover && drawMode === "line" && !stroke.current) {
+  } else if (tool === "knife" && hover && drawMode === "line") {
     const q = scr(hover); knife = { x: q.x, y: q.y, angle: scrAng(lastAngle.current) };
   }
   let sprite = null;
-  const sp = live && live.length ? live[live.length - 1] : hover;
-  if (sp && tool && tool !== "knife" && tool !== "hand") { const q = scr(sp); sprite = { x: q.x, y: q.y }; }
-  const showHand = g.phase !== "inspect";
+  const spPt = live && live.length ? live[live.length - 1] : hover;
+  if (spPt && tool && tool !== "knife" && tool !== "hand" && drawMode !== "none") { const q = scr(spPt); sprite = { x: q.x, y: q.y }; }
+  const showHand = g.phase === "work" || g.phase === "failed";
   let handState = "ok";
   if (showHand) {
     const pts = live && live.length >= 2 && drawMode === "line" ? live : draft ? draft.pts : null;
-    if (pts && drawMode === "line" && tool === "knife" && handCheck(F, g.hand, pts, headOff).danger) handState = "danger";
-    else if (outsideDist(F, g.hand, headOff) > 4) handState = "loose";
+    if (pts && tool === "knife") { const hc = handCheck(F, g, pts); handState = hc.hit ? "danger" : hc.near ? "warn" : "ok"; }
+    else if (outsideDist(F, g.hand, g) > 4) handState = "warn";
+    if (g.fail && g.fail.kind === "hand") handState = "danger";
   }
   const hq = scr(g.hand);
   const recQ = handHint ? scr(handHint) : null;
-  const avatar = g.phase === "inspect" ? null : html`<g>
-    ${showHand && recQ && html`<g pointer-events="none"><circle cx=${recQ.x} cy=${recQ.y} r=${HAND_R - 4} fill="var(--guide)" opacity="0.14" stroke="var(--guide)" stroke-width="2" stroke-dasharray="4 4"/>
-      <text x=${recQ.x} y=${recQ.y - HAND_R} text-anchor="middle" font-size="12" fill="var(--guide)" font-weight="700">手の置き場所</text></g>`}
-    ${showHand && html`<${Hand} x=${hq.x} y=${hq.y} state=${handState}/>`}
-    ${knife ? html`<${Knife} x=${knife.x} y=${knife.y} angle=${knife.angle}/>` : html`<${Knife} x="715" y="290" angle=${Math.PI} resting=${true}/>`}
-    ${sprite && html`<g transform=${`translate(${sprite.x - 22} ${sprite.y - 22}) scale(1.8)`} pointer-events="none" style=${{ color: "#1d2a33" }}>
-      <circle cx="12" cy="12" r="12" fill="#ffffff" opacity="0.75"/><${ToolGlyph} id=${tool}/></g>`}
-    ${g.prepDone.rinse && !g.prepDone.dry && g.phase === "prep" && html`<g pointer-events="none" opacity="0.55">${[260, 330, 400, 470, 540].map((x) => html`<circle key=${x} cx=${scr({ x, y: 0 }).x} cy=${F.B.CY + 30} r="3" fill="#7fb6e6"/>`)}</g>`}
-  </g>`;
 
-  return html`<svg ref=${svgRef} viewBox=${`${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`} className=${drawMode !== "none" ? "draw" : ""} style=${{ cursor: drawMode === "none" ? undefined : tool === "hand" ? "grab" : drawMode === "line" && tool === "knife" ? "none" : "crosshair" }}
-      role="img" aria-label="まな板の上の魚" onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onPointerLeave=${() => setHover(null)}>
+  return html`<svg ref=${svgRef} viewBox=${`${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`} className=${drawMode !== "none" ? "draw" : ""}
+      style=${{ cursor: drawMode === "none" ? undefined : tool === "hand" ? "grab" : drawMode === "line" ? "none" : "crosshair" }}
+      role="img" aria-label=${`まな板の上の${F.name}`} onPointerDown=${down} onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onPointerLeave=${() => setHover(null)}>
     <${FishDefs}/>
     <${Board} cloth=${!!g.prepDone.board}/>
-    <clipPath id="headless"><polygon points=${headClipPoly(F, clipDev)}/></clipPath>
-    <clipPath id="bodyClip"><path d=${outline}/></clipPath>
+    <clipPath id="remain"><polygon points=${remainClip(F, g)}/></clipPath>
+    <clipPath id=${"bodyClip-" + F.id}><path d=${bodyOutline(B)}/></clipPath>
     <g transform=${tr}>
-      <ellipse cx="410" cy=${B.CY + 75} rx="270" ry="10" fill="#000" opacity="0.08"/>
-      <g clip-path=${headOff ? "url(#headless)" : undefined}>
-        ${showSkin ? html`<g>
-          <${Fins} F=${F} p=${p}/>
-          <path d=${outline} fill="url(#skin)" stroke="#45585e" stroke-width="1.4" style=${clickable ? { cursor: "pointer" } : undefined} onClick=${clickable ? () => onPart(null) : undefined}/>
-          ${clickable && html`<g>
-            <path d=${`M${B.X0 - 7} ${B.CY} L${B.X0} ${B.top(B.X0)} ${polyD(targetPts({ axis: "x", a: B.X0, b: 214, fn: B.top })).replace("M", "L")} L214 ${B.bot(214)} L${B.X0} ${B.bot(B.X0)} Z`} fill=${sel("head") ? "#ffffff" : "transparent"} opacity=${sel("head") ? 0.25 : 1} ...${p("head")}/>
-            <path d=${polyD(targetPts({ axis: "x", a: 300, b: 590, fn: (x) => B.top(x) + 8 }))} stroke=${sel("back") ? "#fff" : "transparent"} stroke-opacity="0.5" stroke-width="16" fill="none" ...${p("back")}/>
-            <path d=${polyD(targetPts({ axis: "x", a: 345, b: 590, fn: (x) => B.bot(x) - 8 }))} stroke=${sel("belly") ? "#fff" : "transparent"} stroke-opacity="0.5" stroke-width="16" fill="none" ...${p("belly")}/>
-            <path d=${`M225 ${B.CY + 12} L${F.anusX - 6} ${B.CY + 12} L${F.anusX - 6} ${B.bot(F.anusX) - 14} L225 ${B.bot(225) - 14} Z`} fill=${sel("guts") ? "#c45" : "transparent"} opacity=${sel("guts") ? 0.35 : 1} ...${p("guts")}/>
-            <rect x="560" y=${B.CY - 14} width="44" height="28" fill=${sel("peduncle") ? "#fff" : "transparent"} opacity=${sel("peduncle") ? 0.35 : 1} ...${p("peduncle")}/>
-          </g>`}
-          ${cells.map((c, i) => (g.scaleClean[i] ? null : html`<rect key=${i} x=${c.x - c.w / 2} y=${c.y0} width=${c.w + 0.5} height=${c.y1 - c.y0 + 0.5} fill="url(#scalePat)" clip-path="url(#bodyClip)" pointer-events="none"/>`))}
-          <path d=${latD} fill="none" stroke="#2f4750" stroke-width="1.2" opacity="0.6" pointer-events="none"/>
-          ${clickable && html`<path d=${latD} fill="none" stroke=${sel("lateral") ? "#fff" : "transparent"} stroke-opacity="0.6" stroke-width="10" ...${p("lateral")}/>`}
-          <g ...${p("zeigo")}>${zeigoMarks}${clickable && html`<rect x="392" y=${B.CY - 8} width="200" height="14" fill=${sel("zeigo") ? "#fff" : "transparent"} opacity="0.4"/>`}</g>
-          <path d=${`M206 ${B.top(206) + 10} C220 ${B.CY - 20} 220 ${B.CY + 18} 204 ${B.bot(204) - 8}`} fill="none" stroke="#2f454b" stroke-width="2.2" opacity="0.8" pointer-events="none"/>
-          ${clickable && html`<path d=${`M196 ${B.top(196) + 8} C214 ${B.CY - 20} 214 ${B.CY + 18} 196 ${B.bot(196) - 8} L186 ${B.bot(186) - 10} C200 ${B.CY + 10} 200 ${B.CY - 10} 186 ${B.top(186) + 10} Z`} fill=${sel("gill") ? "#fff" : "transparent"} opacity="0.35" ...${p("gill")}/>`}
-          <path d=${`M${B.X0 - 6} ${B.CY + 2} Q${B.X0 + 12} ${B.CY + 10} ${B.X0 + 26} ${B.CY + 7}`} fill="none" stroke="#2f454b" stroke-width="1.4" pointer-events="none"/>
-          <circle cx=${F.eye.x} cy=${F.eye.y} r=${F.eye.r} fill="#f4f1e6" stroke="#333" stroke-width="1.2" ...${p("eye")}/>
-          <circle cx=${F.eye.x + 1} cy=${F.eye.y} r=${F.eye.r * 0.55} fill="#111" pointer-events="none"/>
-          <circle cx=${F.eye.x - 2} cy=${F.eye.y - 3} r="2" fill="#fff" pointer-events="none"/>
-          <path d=${`M204 ${B.CY + 8} C232 ${B.CY + 2} 268 ${B.CY + 4} 300 ${B.CY + 4} C270 ${B.CY + 12} 232 ${B.CY + 18} 206 ${B.CY + 16} Z`} fill="url(#fin)" stroke="#5f6f70" stroke-width="1" ...${p("pectoral")}/>
-          <circle cx=${F.anusX} cy=${B.bot(F.anusX) - 3} r="3" fill="#7a5a52" ...${p("anus")}/>
-          ${clickable && html`<circle cx=${F.anusX} cy=${B.bot(F.anusX) - 3} r="10" fill="transparent" ...${p("anus")}/>`}
-          ${g.cuts.gut && html`<path d=${polyD(targetPts({ axis: "x", a: 216, b: 335, fn: (x) => B.bot(x) - 4 }))} stroke=${g.prepDone.rinse ? "#b0574d" : "#4a1c1c"} stroke-width="4" fill="none" stroke-linecap="round"/>`}
-          ${sideCuts.filter((c) => c.pts).map((c) => html`<path key=${c.key} d=${polyD(c.pts)} fill="none" stroke="var(--slit)" stroke-width="3" stroke-linecap="round" opacity="0.85"/>`)}
-          ${(g.xray || sel("spine")) && html`<g opacity="0.75" pointer-events="none"><${Skeleton} F=${F}/></g>`}
-          ${clickable && html`<path d=${`M228 ${F.SPY} L600 ${F.SPY}`} stroke="transparent" stroke-width="12" ...${p("spine")}/>`}
-        </g>` : html`<g>
-          <path d=${`M${B.X1 - 4} ${B.top(B.X1 - 4)} C${B.X1 + 40} ${B.CY - 25} ${B.X1 + 80} ${B.CY - 50} ${B.X1 + B.tailLen} ${B.CY - B.tailSpan} C${B.X1 + 95} ${B.CY - 25} ${B.X1 + 72} ${B.CY - 6} ${B.X1 + 70} ${B.CY} C${B.X1 + 72} ${B.CY + 6} ${B.X1 + 95} ${B.CY + 25} ${B.X1 + B.tailLen} ${B.CY + B.tailSpan} C${B.X1 + 80} ${B.CY + 50} ${B.X1 + 40} ${B.CY + 25} ${B.X1 - 4} ${B.bot(B.X1 - 4)} Z`} fill="url(#fin)" stroke="#5f6f70"/>
-          <path d=${outline} fill="url(#flesh)" stroke="#b86b5e" stroke-width="1.2"/>
+      <ellipse cx=${(B.X0 + B.X1) / 2} cy=${B.bot((B.X0 + B.X1) / 2) + 18} rx="270" ry="10" fill="#000" opacity="0.08"/>
+      <g clip-path="url(#remain)">
+        ${showSkin ? html`<${FishSkin} F=${F} g=${g} p=${p} sel=${sel} clickable=${clickable} onPart=${onPart} cells=${cells}/>` : html`<g>
+          <path d=${caudalPath(B)} fill=${F.id === "tai" ? "url(#fin-tai)" : "url(#fin)"} stroke="#5f6f70"/>
+          <path d=${bodyOutline(B)} fill=${"url(#flesh-" + F.id + ")"} stroke="#b86b5e" stroke-width="1.2"/>
           <${Skeleton} F=${F} remnant=${(x) => Math.abs(devAt(g.cuts.A_spine, F.targets.spine, x)) * 0.8}/>
+          ${g.gashes.filter((x) => x.face === "B").map((x, i) => html`<path key=${i} d=${polyD(x.pts)} fill="none" stroke="#7a1f1f" stroke-width="3.2" opacity="0.9"/>`)}
         </g>`}
       </g>
       ${guideKeys.map((gk) => html`<${GuideLine} key=${gk.key} t=${F.targets[gk.key]} faint=${gk.faint} arrow=${gk.arrow}/>`)}
       ${draft && html`<path d=${polyD(draft.pts)} fill="none" stroke="var(--draft)" stroke-width="3.5" stroke-dasharray="7 5" stroke-linecap="round" pointer-events="none"/>`}
       ${liveStroke && html`<path d=${polyD(liveStroke)} fill="none" stroke="var(--draft)" stroke-width="3.5" stroke-linecap="round" pointer-events="none"/>`}
+      ${g.fail && g.fail.pts && html`<path d=${polyD(g.fail.pts)} fill="none" stroke="var(--bad)" stroke-width="5" stroke-linecap="round" pointer-events="none"/>`}
     </g>
-    ${avatar}
+    ${showHand && recQ && html`<g pointer-events="none"><circle cx=${recQ.x} cy=${recQ.y} r=${HAND_R - 4} fill="var(--guide)" opacity="0.14" stroke="var(--guide)" stroke-width="2" stroke-dasharray="4 4"/>
+      <text x=${recQ.x} y=${recQ.y - HAND_R} text-anchor="middle" font-size="12" fill="var(--guide)" font-weight="700">手の置き場所</text></g>`}
+    ${showHand && html`<${Hand} x=${hq.x} y=${hq.y} state=${handState}/>`}
+    ${g.phase !== "inspect" && (knife ? html`<${Knife} x=${knife.x} y=${knife.y} angle=${knife.angle}/>` : html`<${Knife} x="715" y="292" angle=${Math.PI} resting=${true}/>`)}
+    ${sprite && html`<g transform=${`translate(${sprite.x - 22} ${sprite.y - 22}) scale(1.8)`} pointer-events="none" style=${{ color: "#1d2a33" }}>
+      <circle cx="12" cy="12" r="12" fill="#ffffff" opacity="0.75"/><${ToolGlyph} id=${tool}/></g>`}
+    ${g.prepDone.rinse && !g.prepDone.dry && html`<g pointer-events="none" opacity="0.6">${[0.2, 0.35, 0.5, 0.65, 0.8].map((t) => { const x = lerp(F.headT.xTop, B.X1, t); const q = scr({ x, y: 0 }); return html`<circle key=${t} cx=${q.x} cy=${B.CY + 30} r="3" fill="#7fb6e6"/>`; })}</g>`}
     ${hintFlash && html`<rect x=${VIEW.x + 6} y=${VIEW.y + 6} width=${VIEW.w - 12} height=${VIEW.h - 18} rx="10" fill="none" stroke="var(--guide)" stroke-width="3" opacity="0.6" pointer-events="none"/>`}
   </svg>`;
 }
@@ -971,11 +1147,10 @@ function FishView({ F, g, mode, guideKeys, draft, onPart, drawMode, onStroke, on
 /* =========================================================
    画面
    ========================================================= */
-function Stepper({ phase }) {
-  const steps = [["inspect", "魚の確認"], ["prep", "下処理"], ["cut", "三枚おろし"], ["result", "仕上がり確認"]];
-  const idx = steps.findIndex((s) => s[0] === phase);
+function Stepper({ idx, failed }) {
+  const steps = ["魚の確認", "下処理", "三枚おろし", "仕上がり確認"];
   return html`<ol className="stepper" aria-label="工程">
-    ${steps.map(([k, name], i) => html`<li key=${k} className=${i === idx ? "now" : i < idx ? "done" : ""} aria-current=${i === idx ? "step" : undefined}>
+    ${steps.map((name, i) => html`<li key=${name} className=${i === idx ? (failed ? "failed" : "now") : i < idx ? "done" : ""} aria-current=${i === idx ? "step" : undefined}>
       <span className="n">${i < idx ? "✓" : i + 1}</span><span className="t">${name}</span></li>`)}
   </ol>`;
 }
@@ -989,7 +1164,7 @@ function HowTo() {
       <li><b>道具で魚をタップ</b>：布巾・水・ペーパーなどを使う</li>
       <li><b>魚の上をドラッグ</b>：包丁を動かして線を引く</li>
       <li><b>手をドラッグ</b>：魚を押さえる手を動かす</li>
-      <li><b>決定</b>：引いた線を判定する</li>
+      <li><b>決定</b>：引いた線のとおりに包丁を入れる</li>
       <li><b>戻る</b>：直前の操作を取り消す</li>
       <li><b>リセット</b>：魚を最初の状態に戻す</li>
       <li><b>ヒント</b>：次にすべきことを表示</li>
@@ -1003,40 +1178,36 @@ function Msg({ m }) {
     <span className="mt">${m.title}</span><span>${m.text}</span></div>`;
 }
 
-function TitleArt({ F }) {
-  return html`<svg viewBox=${`${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`} aria-hidden="true">
-    <${FishDefs}/><${Board}/>
-    <g>
-      <${Fins} F=${F} p=${() => ({})}/>
-      <path d=${bodyOutline(F.B)} fill="url(#skin)" stroke="#45585e" stroke-width="1.4"/>
-      <circle cx=${F.eye.x} cy=${F.eye.y} r=${F.eye.r} fill="#f4f1e6" stroke="#333"/>
-      <circle cx=${F.eye.x + 1} cy=${F.eye.y} r=${F.eye.r * 0.55} fill="#111"/>
-      <path d=${`M204 ${F.B.CY + 8} C232 ${F.B.CY + 2} 268 ${F.B.CY + 4} 300 ${F.B.CY + 4} C270 ${F.B.CY + 12} 232 ${F.B.CY + 18} 206 ${F.B.CY + 16} Z`} fill="url(#fin)" stroke="#5f6f70"/>
-      <path d=${`M206 ${F.B.top(206) + 10} C220 ${F.B.CY - 20} 220 ${F.B.CY + 18} 204 ${F.B.bot(204) - 8}`} fill="none" stroke="#2f454b" stroke-width="2.2" opacity="0.8"/>
-      ${["belly", "back", "spine"].map((k) => html`<${GuideLine} key=${k} t=${F.targets[k]} arrow=${true}/>`)}
-    </g>
+function FishPreview({ F, guides, vb }) {
+  const g = newGame(F.id, "practice");
+  return html`<svg viewBox=${vb || `${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`} aria-hidden="true">
+    <${FishDefs}/>${!vb && html`<${Board}/>`}
+    <clipPath id=${"bodyClip-" + F.id}><path d=${bodyOutline(F.B)}/></clipPath>
+    <${FishSkin} F=${F} g=${g} p=${() => ({})} sel=${() => false} clickable=${false} onPart=${() => {}} cells=${[]}/>
+    ${guides && ["belly", "back", "spine"].map((k) => html`<${GuideLine} key=${k} t=${F.targets[k]} arrow=${true}/>`)}
   </svg>`;
 }
 
-function TitleScreen({ onStart, initMode }) {
+function TitleScreen({ onStart, initMode, initFish }) {
   const [mode, setMode] = useState(initMode || "practice");
-  const [fish, setFish] = useState("aji");
-  const F = FISH_LIST[0];
+  const [fish, setFish] = useState(initFish || "aji");
+  const F = FISH[fish];
   return html`<div className="title-screen fadein">
     <section className="hero">
-      <div className="art"><${TitleArt} F=${F}/></div>
+      <div className="art"><${FishPreview} F=${F} guides=${true}/></div>
       <div className="copy">
         <span className="eyebrow">三枚おろし・修業帳</span>
-        <p>まな板の上の魚を自分の手でさばくシミュレーションです。部位を確かめ、下処理をし、包丁の線を自分で引いて、身2枚と中骨1枚に分けます。</p>
-        <p className="note">切り口の位置・向き・順序を判定し、最後に100点満点で講評します。マウスでも、スマートフォンやタブレットの指でも操作できます。</p>
+        <p>まな板の上の魚を、道具を持ち替えながら自分の手でさばくシミュレーションです。部位を確かめ、下処理をし、包丁の線を自分で引いて、身2枚と中骨1枚に分けます。</p>
+        <p className="note">包丁は引いたとおりに入ります。狙いのない切り込みは身を傷め、魚を切断したり、押さえる手を切ったりすると、その時点で失敗です。</p>
       </div>
     </section>
     <section className="panel choice">
       <h2>魚を選ぶ</h2>
       <div className="opts">
-        ${FISH_LIST.map((f) => html`<button key=${f.id} id=${"fish-" + f.id} className=${"btn opt " + (fish === f.id ? "sel" : "") + (f.available ? "" : " locked")}
-            disabled=${!f.available} aria-pressed=${fish === f.id} onClick=${() => f.available && setFish(f.id)}>
-          <span className="on">${f.name}${f.available ? "" : "（準備中）"}</span><span className="od">${f.summary}</span></button>`)}
+        ${FISH_LIST.map((f) => html`<button key=${f.id} id=${"fish-" + f.id} className=${"btn opt " + (fish === f.id ? "sel" : "")} aria-pressed=${fish === f.id} onClick=${() => setFish(f.id)}>
+          <${FishPreview} F=${f} vb="80 70 760 230"/>
+          <span className="on">${f.name}　<span className="stars" aria-label=${`難しさ${f.level}`}>${"★".repeat(f.level)}${"☆".repeat(3 - f.level)}</span></span>
+          <span className="od">${f.summary}</span></button>`)}
       </div>
     </section>
     <section className="panel choice">
@@ -1045,7 +1216,7 @@ function TitleScreen({ onStart, initMode }) {
         ${Object.values(MODES).map((m) => html`<button key=${m.id} id=${"mode-" + m.id} className=${"btn opt " + (mode === m.id ? "sel" : "")} aria-pressed=${mode === m.id} onClick=${() => setMode(m.id)}>
           <span className="on">${m.name}</span><span className="od">${m.desc}</span></button>`)}
       </div>
-      <button id="start" className="btn primary" onClick=${() => onStart(fish, mode)}>${MODES[mode].name}で始める</button>
+      <button id="start" className="btn primary" onClick=${() => onStart(fish, mode)}>${F.name}・${MODES[mode].name}で始める</button>
     </section>
     <${HowTo}/>
   </div>`;
@@ -1054,32 +1225,33 @@ function TitleScreen({ onStart, initMode }) {
 function ResultView({ F, g, mode, extra, onRetry, onTitle }) {
   const sc = useMemo(() => computeScore(g, F, mode, extra), [g, F, mode, extra]);
   const fb = useMemo(() => feedbackLists(g, F, sc, mode), [g, F, sc, mode]);
-  const rows = ["zeigo", "head", "gut", "A_belly", "A_back", "A_spine", "B_back", "B_belly", "B_spine"].map((k) => [k, g.cuts[k]]);
+  const rowKeys = (F.zeigo ? ["zeigo"] : []).concat(["head", "gut", "A_belly", "A_back", "A_spine", "B_back", "B_belly", "B_spine"]);
   const remnant = (x) => (Math.abs(devAt(g.cuts.A_spine, F.targets.spine, x)) + Math.abs(devAt(g.cuts.B_spine, F.targets.spine, x))) * 0.4;
   const B = F.B;
+  const lab = (k) => (k.startsWith("A_") ? "1枚目・" : k.startsWith("B_") ? "2枚目・" : "") + F.targets[k.replace(/^[AB]_/, "")].name;
   return html`<div className="result fadein">
     <section className="panel">
       <span className="eyebrow">仕上がり確認</span>
       <div className="scorehead">
         <div className="total" id="total">${sc.total}<small> / 100点</small></div>
         <div className="rank">ランク ${sc.rank.r}・${sc.rank.name}</div>
-        <div className="note">${mode.name}・${F.name}・ヒント使用 ${extra.hintsUsed}回・戻る ${extra.undos}回</div>
+        <div className="note">${F.name}・${mode.name}・ヒント使用 ${extra.hintsUsed}回・戻る ${extra.undos}回</div>
       </div>
-      <svg viewBox="150 35 600 440" style=${{ width: "100%", maxWidth: "720px", height: "auto" }} role="img" aria-label="おろした身2枚と中骨">
+      <svg viewBox="150 25 600 470" style=${{ width: "100%", maxWidth: "720px", height: "auto" }} role="img" aria-label="おろした身2枚と中骨">
         <${FishDefs}/>
-        <rect x="155" y="40" width="590" height="430" rx="14" fill="var(--board)"/>
-        <rect x="155" y="40" width="590" height="430" rx="14" fill="url(#grain)"/>
-        <${Fillet} F=${F} g=${g} s="A" offY=${-75}/>
-        <g transform="translate(0 80)">
-          <path d=${`M${B.X1 - 4} ${B.CY - 6} C${B.X1 + 40} ${B.CY - 25} ${B.X1 + 80} ${B.CY - 50} ${B.X1 + B.tailLen} ${B.CY - B.tailSpan} C${B.X1 + 95} ${B.CY - 25} ${B.X1 + 72} ${B.CY - 6} ${B.X1 + 70} ${B.CY} C${B.X1 + 72} ${B.CY + 6} ${B.X1 + 95} ${B.CY + 25} ${B.X1 + B.tailLen} ${B.CY + B.tailSpan} C${B.X1 + 80} ${B.CY + 50} ${B.X1 + 40} ${B.CY + 25} ${B.X1 - 4} ${B.CY + 6} Z`} fill="url(#fin)" stroke="#5f6f70"/>
+        <rect x="155" y="30" width="590" height="460" rx="14" fill="var(--board)"/>
+        <rect x="155" y="30" width="590" height="460" rx="14" fill="url(#grain)"/>
+        <${Fillet} F=${F} g=${g} s="A" offY=${-80}/>
+        <g transform="translate(0 78)">
+          ${!g.tailOff && html`<path d=${caudalPath(B, true)} fill=${F.id === "tai" ? "url(#fin-tai)" : "url(#fin)"} stroke="#5f6f70"/>`}
           <${Skeleton} F=${F} remnant=${remnant}/>
         </g>
-        <g transform="translate(0 215)"><${Fillet} F=${F} g=${g} s="B" mirror=${false}/></g>
-        <text x="170" y="80" fill="#3b2a12" font-size="16" font-weight="700">身（1枚目）</text>
-        <text x="170" y="240" fill="#3b2a12" font-size="16" font-weight="700">中骨</text>
+        <g transform="translate(0 215)"><${Fillet} F=${F} g=${g} s="B"/></g>
+        <text x="170" y="62" fill="#3b2a12" font-size="16" font-weight="700">身（1枚目）</text>
+        <text x="170" y="238" fill="#3b2a12" font-size="16" font-weight="700">中骨</text>
         <text x="170" y="385" fill="#3b2a12" font-size="16" font-weight="700">身（2枚目）</text>
       </svg>
-      <p className="note">身の形は、あなたが引いた背側・腹側の線から描いています。中骨の赤い帯は骨に残った身（推定）、身の縁の白い短線はヒレの骨が残った可能性のある箇所です。</p>
+      <p className="note">身の形は、あなたが引いた背側・腹側の線から描いています。中骨の帯は骨に残った身（推定）、身の縁の白い短線はヒレの骨が残った可能性のある箇所、黒い線は狙いのない切り傷、ジグザグは身割れです。</p>
     </section>
 
     <section className="panel">
@@ -1104,16 +1276,17 @@ function ResultView({ F, g, mode, extra, onRetry, onTitle }) {
       <h2>切断線ごとの記録</h2>
       <div className="tablewrap"><table>
         <thead><tr><th>切断線</th><th>平均ずれ</th><th>届いた長さ</th><th>向き</th><th>正確さ</th></tr></thead>
-        <tbody>${rows.map(([k, c]) => html`<tr key=${k}>
-          <td>${k.startsWith("A_") ? "1枚目・" : k.startsWith("B_") ? "2枚目・" : ""}${c.name}</td>
-          <td>${c.meanAbs.toFixed(1)}（許容 ${c.tol}）</td><td>${Math.round(c.cov * 100)}%</td>
-          <td>${F.targets[c.key].dir === 0 ? "—" : c.dirOk ? "正しい" : "逆"}</td><td>${Math.round(c.acc * 100)}%</td></tr>`)}</tbody>
+        <tbody>${rowKeys.map((k) => { const c = g.cuts[k]; return html`<tr key=${k}>
+          <td>${lab(k)}</td>
+          ${c ? html`<td>${c.meanAbs.toFixed(1)}（許容 ${c.tol.toFixed(1)}）</td><td>${Math.round(c.cov * 100)}%</td>
+          <td>${F.targets[c.key].dir === 0 ? "—" : c.dirOk ? "正しい" : "逆"}</td><td>${Math.round(c.acc * 100)}%</td>`
+            : html`<td colSpan="4">行っていません</td>`}</tr>`; })}</tbody>
       </table></div>
-      <p className="note">ずれはゲーム内の座標の単位（魚の全長がおよそ620）です。${F.finishNote}</p>
+      <p className="note">ずれはゲーム内の座標の単位（魚の全長がおよそ600）です。${F.finishNote}</p>
     </section>
 
     <div className="controls" style=${{ gridTemplateColumns: "repeat(2, minmax(0,1fr))" }}>
-      <button id="retry" className="btn primary" onClick=${onRetry}>同じモードでもう一度</button>
+      <button id="retry" className="btn primary" onClick=${onRetry}>同じ魚・モードでもう一度</button>
       <button id="totitle" className="btn" onClick=${onTitle}>魚・難易度を選び直す</button>
     </div>
   </div>`;
@@ -1131,24 +1304,25 @@ function App({ boot }) {
   const [hintUntil, setHintUntil] = useState(0);
   const [resetArmed, setResetArmed] = useState(false);
   const [tool, setTool] = useState("hand");
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
-      const i = Number(e.key) - 1;
-      if (i >= 0 && i < TOOLS.length) setTool(TOOLS[i].id);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
   const [, force] = useState(0);
   const latest = useRef({});
   latest.current = { screen, g, extra };
   useEffect(() => { try { window.claude && window.claude.hot && window.claude.hot.snapshot && window.claude.hot.snapshot(() => latest.current); } catch (_) {} }, []);
   useEffect(() => { if (!hintUntil) return; const t = setTimeout(() => force((n) => n + 1), Math.max(0, hintUntil - Date.now()) + 30); return () => clearTimeout(t); }, [hintUntil]);
   useEffect(() => { if (!resetArmed) return; const t = setTimeout(() => setResetArmed(false), 3500); return () => clearTimeout(t); }, [resetArmed]);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+      const i = Number(e.key) - 1;
+      if (i >= 0 && i < TOOLS.length) { setTool(TOOLS[i].id); setDraft(null); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
-  const F = g ? FISH_LIST.find((f) => f.id === g.fishId) : FISH_LIST[0];
+  const F = g ? FISH[g.fishId] : FISH_LIST[0];
   const mode = g ? MODES[g.modeId] : MODES.practice;
+  const tol = mode.tol * F.tolMul;
 
   const cellsRef = useMemo(() => scaleCells(F), [F]);
   const scrubSnap = useRef(null);
@@ -1158,7 +1332,7 @@ function App({ boot }) {
   if (screen === "title" || !g) {
     return html`<div className="wrap">
       <header className="top"><div className="brand"><small>料理シミュレーション</small><h1>職人への道！三枚おろしシミュレーター</h1></div></header>
-      <${TitleScreen} onStart=${start} initMode=${g && g.modeId}/>
+      <${TitleScreen} onStart=${start} initMode=${g && g.modeId} initFish=${g && g.fishId}/>
     </div>`;
   }
 
@@ -1167,72 +1341,68 @@ function App({ boot }) {
   const hintActive = Date.now() < hintUntil;
 
   // ---- 罰点・メッセージのヘルパー ----
-  const withPen = (ng, cat, pts, msg) => ({ ...ng, pen: ng.pen.concat([{ cat, pts, msg }]) });
+  const withPen = (ng, cat, pts, msg, more) => ({ ...ng, pen: ng.pen.concat([{ cat, pts, msg, ...(more || {}) }]) });
+  const withLoss = (ng, side, loss, msg) => ({ ...ng, pen: ng.pen.concat([{ cat: "yield", loss, side, msg }]) });
   const say = (ng, kind, title, text, lesson) => ({ ...ng, msg: { kind, title, text }, lesson: lesson === undefined ? ng.lesson : lesson });
+  const failWith = (ng, kind, title, text, lesson, pts) => ({ ...ng, phase: "failed", fail: { kind, title, text, lesson, pts },
+    msg: { kind: "bad", title, text }, lesson });
 
   // ---- 確認段階 ----
   const onPart = (key) => {
     if (!key) { setG({ ...g, selPart: null }); return; }
-    const part = PARTS[key];
+    const part = partInfo(F, key);
     setG(say({ ...g, selPart: key, seen: g.seen.includes(key) ? g.seen : g.seen.concat([key]) }, "info", part.name, part.text, null));
   };
 
   // ---- 下処理 ----
   // 刃物をまな板の固定より先に使ったら安全点を減点（作業は続けられる）
   const knifeCheck = (ng) => {
-    if (!ng.prepDone.board && !ng.boardLate) {
-      return { ng: withPen({ ...ng, boardLate: true }, "safety", 3, "まな板を固定する前に刃物を使った"),
-        note: "【安全】まな板を固定する前に刃物を使いました。まな板が滑ると危険です（安全点から減点）。" };
-    }
+    if (!ng.prepDone.board && !ng.boardLate) return { ng: { ...ng, boardLate: true }, note: "【安全】まな板を固定する前に刃物を使いました。まな板が滑ると危険です（安全点から減点）。" };
     return { ng, note: "" };
   };
-  // 下処理がすべて済んだら、そのまま三枚おろしへ
-  const finishPrep = (ng) => {
-    if (ng.phase !== "prep" || !F.prep.every((st) => ng.prepDone[st.id])) return ng;
-    return { ...ng, phase: "cut", msg: { kind: ng.msg.kind, title: ng.msg.title + "　― 下処理が終わりました",
-      text: ng.msg.text + " 次は三枚おろしです。「出刃包丁」で、まず1枚目の腹側から切り込みを入れます（頭が左、腹が手前）。" } };
+  const flip = () => {
+    if (!(g.phase === "work" && g.side === "A" && g.aRemoved)) return;
+    commit(say({ ...g, side: "B" }, "info", "裏返しました", "中骨が付いた側を下にしました。頭側は右になります。背側・腹側に切り込みを入れてから、中骨に沿って切り離しましょう。", F.cutLessons.flip));
   };
   // 包丁以外の道具を魚・まな板に使ったとき
   const onTap = () => {
-    if (g.phase === "inspect") return;
-    if (tool === "hand") {
-      if (g.phase === "cut" && g.side === "A" && g.aRemoved) flip();
-      return;
-    }
+    if (g.phase !== "work") return;
+    if (tool === "hand") { if (g.side === "A" && g.aRemoved) flip(); return; }
     if (tool === "salt") {
-      const d = F.distractors.find((x) => x.id === "salt");
-      if (g.phase === "cut" || g.phase === "prep") {
-        const first = !g.pen.some((x) => x.msg.includes("塩"));
-        const ng = say(g, "bad", "いま塩はふりません", d.why + (first ? "（手順点 −3）" : ""));
-        if (first) commit(withPen(ng, "proc", 3, "不要な作業「塩をふる」をした")); else setG(ng);
-      }
+      if (g.salted) { setG(say(g, "info", "塩", "もう塩をふってあります。")); return; }
+      let ng = withPen({ ...g, salted: true }, "proc", 3, "おろす前に塩をふった");
+      ng = withLoss(ng, "both", 2, "塩で身から水分が出た");
+      commit(say(ng, "bad", "塩をふってしまいました", "塩をふるのは、おろした身を料理に使う段階です。いまふったので身から水分が出て、魚が滑りやすくなりました（手順点 −3）。"));
       return;
     }
     if (tool === "scaler") { setG(say(g, "info", "うろこ取り", g.prepDone.scale ? "うろこはもう取れています。" : "うろこ取りは、魚の上をこするようにドラッグして使います。")); return; }
-    if (tool === "knife") { setG(say(g, "info", "出刃包丁", g.phase === "cut" && g.aRemoved && g.side === "A" ? "1枚目の身は外れました。「手」を持って魚をタップすると裏返せます。" : "包丁は、魚の上をドラッグして切る線を引きます。")); return; }
+    if (tool === "knife") { setG(say(g, "info", "出刃包丁", g.side === "A" && g.aRemoved ? "1枚目の身は外れました。「手」を持って魚をタップすると裏返せます。" : "包丁は、魚の上をドラッグして切る線を引きます。")); return; }
     const st = F.prep.find((x) => x.tool === tool);
     if (!st) return;
     if (g.prepDone[st.id]) { setG(say(g, "info", `${st.label}：済んでいます`, "この作業はもう終わっています。")); return; }
-    if (g.phase !== "prep") { setG(say(g, "info", "今は使いません", `${TOOLS.find((t) => t.id === tool).name}は、いまの工程では使いません。`)); return; }
+    if (any3(g) && st.id !== "board") { setG(say(g, "warn", "いまは使いません", "三枚おろしを始めた後に洗うと、切り口から水が入って身が水っぽくなります。洗う・拭くは、おろす前に済ませます。")); return; }
     const missing = st.req.filter((r) => !g.prepDone[r]);
     if (missing.length) {
+      if (st.id === "rinse") { setG(say(g, "info", "表面を洗いました", "魚の表面を洗いましたが、腹の中を洗うのは内臓を取り除いてからです。")); return; }
       const names = missing.map((r) => F.prep.find((x) => x.id === r).label).join("・");
       setG(say(g, "warn", "まだ早いです", `「${st.label}」の前に「${names}」が必要です。${st.reqWhy || ""}`));
       return;
     }
     const done = { board: "まな板の下に濡れ布巾を敷きました。まな板が動かなくなり、安心して包丁を使えます。",
       rinse: "腹の中の血合いをこそげ、流水で洗い流しました。", dry: "ペーパーで腹の中と表面の水気を拭き取りました。" }[st.id];
-    commit(finishPrep(say({ ...g, prepDone: { ...g.prepDone, [st.id]: true } }, "good", `${st.label}：完了`, done, st.lesson)));
+    const allDone = F.prep.every((x) => x.id === st.id || g.prepDone[x.id]);
+    commit(say({ ...g, prepDone: { ...g.prepDone, [st.id]: true } }, "good", `${st.label}：完了${allDone ? "　― 下処理が終わりました" : ""}`,
+      done + (allDone ? " 次は三枚おろしです。「出刃包丁」で、まず1枚目の腹側から切り込みを入れます（頭が左、腹が手前）。" : ""), st.lesson));
   };
   const onScrub = (phase, p, last) => {
-    if (phase === "start") { scrubSnap.current = g; if (!g.prepDone.board && !g.boardLate) setG((cur) => knifeCheck(cur).ng); return; }
+    if (phase === "start") { scrubSnap.current = g; return; }
     if (phase === "move") {
       setG((cur) => {
         const clean = cur.scaleClean.slice(); let changed = false;
         cellsRef.forEach((c, i) => {
           if (clean[i]) return;
-          const ry = Math.max(14, (c.y1 - c.y0) * 0.6);
-          if (Math.abs(p.x - c.x) < c.w * 0.9 + 6 && p.y > c.y0 - ry * 0.5 && p.y < c.y1 + ry * 0.5) { clean[i] = true; changed = true; }
+          const ry = Math.max(14, (c.y1 - c.y0) * 0.6) * F.scaleReach;
+          if (Math.abs(p.x - c.x) < (c.w * 0.9 + 6) * F.scaleReach && p.y > c.y0 - ry * 0.5 && p.y < c.y1 + ry * 0.5) { clean[i] = true; changed = true; }
         });
         let good = cur.scaleGood, bad = cur.scaleBad;
         if (last && Math.abs(p.x - last.x) > Math.abs(p.y - last.y)) { if (p.x < last.x) good++; else bad++; }
@@ -1245,166 +1415,182 @@ function App({ boot }) {
       if (before) setHist((h) => h.concat([before]).slice(-80));
       setG((cur) => {
         const ratio = cur.scaleClean.filter(Boolean).length / cur.scaleClean.length;
-        if (ratio >= 0.9) {
+        const st = F.prep.find((x) => x.id === "scale");
+        if (ratio >= F.scaleNeed) {
           let ng = { ...cur, prepDone: { ...cur.prepDone, scale: true } };
-          const lesson = F.prep.find((x) => x.id === "scale").lesson;
-          const total = cur.scaleGood + cur.scaleBad;
-          if (total > 6 && cur.scaleBad > cur.scaleGood) {
+          if (cur.scaleGood + cur.scaleBad > 6 && cur.scaleBad > cur.scaleGood) {
             ng = withPen(ng, "proc", 2, "うろこを頭から尾の方向に取った");
-            return finishPrep(say(ng, "warn", "うろこ取り：完了（向きに注意）", "うろこは取れましたが、主に頭から尾の方向にこすっていました。うろこは尾から頭に向かって、うろこの重なりを起こすように取ります。", lesson));
+            return say(ng, "warn", "うろこ取り：完了（向きに注意）", "うろこは取れましたが、主に頭から尾の方向にこすっていました。うろこは尾から頭に向かって、うろこの重なりを起こすように取ります。", st.lesson);
           }
-          return finishPrep(say(ng, "good", "うろこ取り：完了", `うろこを${Math.round(ratio * 100)}%取りました。尾から頭の方向へ、うろこを起こすように取れています。`, lesson));
+          return say(ng, "good", "うろこ取り：完了", `うろこを${Math.round(ratio * 100)}%取りました。尾から頭の方向へ、うろこを起こすように取れています。`, st.lesson);
         }
-        return say(cur, "info", "うろこ取り：作業中", `いま${Math.round(ratio * 100)}%です。残っている光ったうろこの部分を、尾から頭の方向へこすってください。`);
+        return say(cur, "info", "うろこ取り：作業中", `いま${Math.round(ratio * 100)}%です（必要 ${Math.round(F.scaleNeed * 100)}%）。残っている光ったうろこの部分を、尾から頭の方向へこすってください。`, st.lesson);
       });
     }
   };
 
-  // ---- 線の判定（下処理の線・三枚おろしの線） ----
-  const strokeSafety = (ng, stroke, headOff) => {
+  // ---- 包丁の線 ----
+  const strokeSafety = (ng, stroke) => {
     let over = false;
-    for (const p of stroke.pts) if (outsideDist(F, p, headOff) > 32) { over = true; break; }
+    for (const q of stroke.pts) if (outsideDist(F, q, ng) > 32) { over = true; break; }
     const L = pathLen(stroke.pts);
     const fast = stroke.dur > 0 && (L / stroke.dur > 2.6 || (stroke.dur < 110 && L > 140));
     const notes = [];
-    if (over) { ng = { ...ng, overshoot: ng.overshoot + 1 }; notes.push("包丁の線が魚から大きくはみ出しました。刃先の行き先に手がないか注意しましょう。"); }
+    if (over) { ng = { ...ng, overshoot: ng.overshoot + 1 }; notes.push("包丁の線が魚から大きくはみ出しました。"); }
     if (fast) { ng = { ...ng, fast: ng.fast + 1 }; notes.push("勢いよく引きすぎです。包丁は一定の速さで落ち着いて動かします。"); }
     return { ng, notes };
   };
-  const reject = (ng, text) => {
-    const pen = mode.id !== "practice";
-    let out = say(ng, "warn", "やり直しましょう", text + (pen ? "（手順点 −1）" : "（練習モードなので減点なし）"));
-    if (pen) out = withPen(out, "proc", 1, "判定できない位置に包丁を入れた");
-    return out;
+  // いまの状態で、包丁の線がどの作業にあたるかを判別する
+  const candidateKeys = () => {
+    const ks = [];
+    if (F.zeigo && !g.cuts.zeigo && !any3(g)) ks.push("zeigo");
+    if (!g.prepDone.head) ks.push("head");
+    if (!g.tailOff) ks.push("tail");
+    if (!(g.side === "A" && g.aRemoved)) {
+      if (!g.prepDone.gut) ks.push("gut");
+      ["belly", "back", "spine"].forEach((k) => ks.push(k));
+    }
+    return ks;
   };
-
   const classify = (pts) => {
-    const s = g.side; const tol = mode.tol;
     let best = null;
-    for (const k of ["belly", "back", "spine"]) {
+    for (const k of candidateKeys()) {
       const ev = evalStroke(pts, F.targets[k], tol);
-      if (ev.n < 3) continue;
-      if (!best || ev.meanAbs < best.ev.meanAbs) best = { k, ev };
+      if (ev.n < 3 || ev.cov < 0.25 || ev.meanAbs > 2.5 * tol) continue;
+      // 位置のずれに加え、目標線に届かない分・目標線の外にはみ出した分も考えて、最も近い作業を選ぶ
+      const score = ev.meanAbs + 3 * tol * (1 - ev.cov) + 3 * tol * ev.outFrac;
+      if (!best || score < best.score) best = { k, ev, score };
     }
-    if (!best || best.ev.meanAbs > 4 * tol) return null;
-    return { ...best, done: !!g.cuts[`${s}_${best.k}`] };
-  };
-
-  // 下処理中の包丁の線が、どの作業にあたるかを判別する
-  const classifyPrep = (pts) => {
-    const tol = mode.tol; let best = null;
-    for (const k of ["zeigo", "head", "gut", "tail", "belly", "back", "spine"]) {
-      const ev = evalStroke(pts, F.targets[k], tol);
-      if (ev.n < 3 || ev.cov < 0.25) continue;
-      if (!best || ev.meanAbs < best.ev.meanAbs) best = { k, ev };
-    }
-    if (!best || best.ev.meanAbs > 4 * tol) return null;
     return best;
   };
-  const prepLabel = (k) => ({ zeigo: "ぜいごを取る", head: "頭を落とす", gut: "腹を開く", tail: "尾を切り落とす", belly: "三枚おろしの切り込み", back: "三枚おろしの切り込み", spine: "三枚おろしの切り離し" }[k]);
+  const labelOf = (k) => (["belly", "back", "spine"].includes(k) ? `${g.side === "A" ? "1枚目" : "2枚目"}の${F.targets[k].name}` : F.targets[k].name);
   const onStroke = (stroke) => { setDraft(stroke); };
-  const onHand = (p) => setG((cur) => ({ ...cur, hand: p }));
-  // 押さえる手の判定。刃の通り道にあれば切らせない（練習以外は安全点を減点）
-  const handGate = (headOff) => {
-    const hc = handCheck(F, g.hand, draft.pts, headOff);
-    if (hc.danger) {
-      const pen = mode.id !== "practice";
-      setHist((h) => h.concat([g]).slice(-80));
-      setG(say(pen ? { ...g, handDanger: g.handDanger + 1 } : g, "bad", "危ない！手が刃の通り道にあります",
-        `押さえている手が、包丁の通り道か刃の進む先にあります。手をドラッグして刃と反対側へ動かしてから、もう一度「決定」を押してください。${pen ? "（安全点 −1）" : "（練習モードなので減点なし）"}`,
-        "包丁の進む先に手を置かないのが基本です。押さえる手は指先を内側に丸めた「猫の手」にし、刃とは反対側の身を押さえます。"));
-      return null;
-    }
-    return hc;
+  const onHand = (q) => setG((cur) => ({ ...cur, hand: q }));
+
+  // 三枚おろしを始めた時点で、済んでいない下処理の影響を記録する
+  const lateChecks = (ng, notes) => {
+    if (ng.prepLateChecked) return ng;
+    ng = { ...ng, prepLateChecked: true };
+    const d = ng.prepDone;
+    if (!d.scale) { ng = withLoss(withPen(ng, "proc", 3, "うろこを取らずにおろした"), "both", 3, "身にうろこが付いた"); notes.push("うろこを取らずにおろしたので、身にうろこが付きました。"); }
+    if (!d.head) { ng = withLoss(withPen(ng, "proc", 4, "頭を付けたままおろした"), "both", 6, "頭付きのまま切り、肩の身が崩れた"); notes.push("頭を付けたままなので、肩の部分で刃が止まり身が崩れました。"); }
+    if (!d.gut) { ng = withLoss(withPen(ng, "proc", 4, "内臓を残したままおろした"), "both", 8, "内臓を切り裂き、身が汚れた"); notes.push("内臓が残っていたため、刃が内臓を切り裂いて身が汚れ、苦みと臭みが移りました。"); }
+    else if (!d.rinse) { ng = withPen(ng, "proc", 2, "血合いを洗わずにおろした"); notes.push("血合いを洗っていないので、身に臭みが残ります。"); }
+    else if (!d.dry) { ng = withPen(ng, "safety", 0, "水気を拭かずにおろした"); ng = { ...ng, handLoose: ng.handLoose + 1 }; notes.push("水気を拭いていないので、魚が滑りやすい状態です。"); }
+    return ng;
   };
 
   const decide = () => {
-    if (!draft) return;
-    const tol = mode.tol;
-    if (g.phase === "prep") {
-      const cls = classifyPrep(draft.pts);
-      if (!cls) {
-        const r = strokeSafety(g, draft, !!g.prepDone.head);
-        commit(reject(r.ng, "どの作業の位置からも大きく外れています。ぜいご・頭・腹など、どこに包丁を入れるのかを決めてから線を引きましょう。"));
-        return;
-      }
-      if (cls.k === "tail") {
-        const d = F.distractors.find((x) => x.id === "tail");
-        commit(withPen(say(g, "bad", "尾は切り落としません", d.why), "proc", 3, "不要な作業「尾を切り落とす」をしようとした"));
-        return;
-      }
-      if (["belly", "back", "spine"].includes(cls.k)) {
-        const rest = F.prep.filter((x) => !g.prepDone[x.id]).map((x) => x.label).join("・");
-        commit(withPen(say(g, "bad", "下処理が終わっていません", `三枚おろしの前に、下処理（${rest}）を済ませます。うろこや内臓が残ったままおろすと、身が汚れ、臭みも移ります。`), "proc", 3, "下処理の途中で三枚おろしを始めようとした"));
-        return;
-      }
-      const st = F.prep.find((x) => x.target === cls.k);
-      if (g.prepDone[st.id]) { setG(say(g, "info", `${st.label}：済んでいます`, "この作業はもう終わっています。")); setDraft(null); return; }
-      const missing = st.req.filter((r) => !g.prepDone[r]);
-      if (missing.length) {
-        const names = missing.map((r) => F.prep.find((x) => x.id === r).label).join("・");
-        commit(withPen(say(g, "bad", "順序が違います", `「${st.label}」の前に「${names}」が必要です。${st.reqWhy || ""}`), "proc", 3, `「${names}」より先に「${st.label}」をしようとした`));
-        return;
-      }
-      const t = F.targets[st.target];
-      const ev = cls.ev;
-      const hc = handGate(!!g.prepDone.head); if (!hc) return;
-      let { ng, notes } = strokeSafety(g, draft, !!g.prepDone.head);
-      const kc = knifeCheck(ng); ng = kc.ng; if (kc.note) notes.push(kc.note);
-      if (hc.loose) { ng = { ...ng, handLoose: ng.handLoose + 1 }; notes.push("押さえる手が魚に乗っていません。魚が動いて危険です。"); }
-      if (ev.cov < 0.6 || ev.meanAbs > 4 * tol) {
-        commit(reject(ng, ev.cov < 0.6 && ev.meanAbs <= 4 * tol ? `「${st.label}」の線が短すぎます（必要な長さの${Math.round(ev.cov * 100)}%）。${st.how}` : `「${st.label}」の位置から大きく外れています。${st.how}`));
-        return;
-      }
-      ng = { ...ng, cuts: { ...ng.cuts, [st.target]: { ...ev, pts: draft.pts } }, prepDone: { ...ng.prepDone, [st.id]: true } };
-      if (!ev.dirOk && t.dirMsg) { ng = withPen(ng, "proc", 2, `「${st.label}」の向きが逆`); notes.unshift("向きが逆です。" + t.dirMsg); }
-      const q = ev.acc >= 0.8 && ev.dirOk ? "good" : ev.acc >= 0.5 ? "warn" : "bad";
-      let detail = `目標線からの平均のずれ ${ev.meanAbs.toFixed(1)}（許容 ${tol}）、届いた長さ ${Math.round(ev.cov * 100)}%。`;
-      if (st.id === "head") detail += ev.meanSigned > 0.5 * tol ? "後ろ寄りに切ったため、肩の身が少し減りました。" : ev.meanSigned < -0.5 * tol ? "前寄りに切ったため、えらぶたの骨が残りやすい位置です。" : "胸ビレのすぐ後ろで、ちょうどよい位置です。";
-      if (st.id === "zeigo" && ev.cov < 0.9) detail += "取り残しのぜいごがあります。";
-      ng = say(ng, q, `${st.label}：${!ev.dirOk && t.dir ? "向きが逆です" : q === "good" ? "きれいにできました" : q === "warn" ? "まずまずです" : "ずれが大きいです"}`, detail + (notes.length ? " " + notes.join(" ") : ""), st.lesson);
-      commit(finishPrep(ng));
+    if (!draft || g.phase !== "work") return;
+    const s = g.side;
+    // 1. 押さえる手：刃が手を通ったら、けがで失敗
+    const hc = handCheck(F, g, draft.pts);
+    if (hc.hit) {
+      commit(failWith(g, "hand", "失敗：手を切ってしまいました", "包丁の通り道に、魚を押さえている手がありました。実際なら大けがです。",
+        "包丁の進む先に手を置かないのが基本です。押さえる手は指先を内側に丸めた「猫の手」にし、刃とは反対側の身を押さえます。手をどけてから包丁を入れましょう。", draft.pts));
       return;
     }
-    if (g.phase === "cut") {
-      const s = g.side;
-      const cls = classify(draft.pts);
-      const hc = handGate(true); if (!hc) return;
-      let { ng, notes } = strokeSafety(g, draft, true);
-      if (hc.loose) { ng = { ...ng, handLoose: ng.handLoose + 1 }; notes.push("押さえる手が魚に乗っていません。魚が動いて危険です。"); }
-      if (!cls) { commit(reject(ng, "どの切り込み位置からも大きく外れています。腹の縁・背の縁・中骨のどこを切るのかを決めてから線を引きましょう。")); return; }
-      const t = F.targets[cls.k];
-      if (cls.done) { setG(say(g, "info", "その切り込みは済んでいます", `${t.name}はもう入れました。${adv.hint}`)); setDraft(null); return; }
-      if (cls.k === "spine" && (!g.cuts[`${s}_belly`] || !g.cuts[`${s}_back`])) {
-        commit(withPen(say(ng, "bad", "順序が違います", "腹側と背側に切り込みを入れてから、中骨に沿って切り離します。外周の切り込みがないまま切り離そうとすると、身が骨から離れず、無理に引くと身が割れてしまいます。"), "proc", 3, "外周の切り込みより先に中骨の切り離しをしようとした"));
+    let { ng, notes } = strokeSafety(g, draft);
+    const kc = knifeCheck(ng); ng = kc.ng; if (kc.note) notes.push(kc.note);
+    if (hc.near) { ng = { ...ng, handNear: ng.handNear + 1 }; notes.push("【安全】刃が押さえる手のすぐ近くを通りました。"); }
+    if (hc.loose) { ng = { ...ng, handLoose: ng.handLoose + 1 }; notes.push("【安全】押さえる手が魚に乗っていません。魚が動いて危険です。"); }
+    if (hc.spike) { ng = { ...ng, spikeHits: ng.spikeHits + 1 }; notes.push(`【安全】背ビレの棘の上に手を置いていたため、棘が手に刺さりました。`); }
+    const tail = notes.length ? " " + notes.join(" ") : "";
+
+    // 2. どの作業にあたるか
+    const cls = classify(draft.pts);
+    if (!cls) {
+      // 狙いのない切り込み：引いたとおりに身が切れる
+      const si = strayInfo(F, g, draft.pts);
+      if (si.severed) {
+        commit(failWith(ng, "sever", `失敗：${F.name}を切断してしまいました`, "包丁が背から腹まで抜け、魚が胴の途中で二つに切れました。これでは三枚おろしにできません。",
+          "包丁を入れる前に、どこを・どの向きに切るのかを決めます。三枚おろしの包丁は、頭の切り口と尾の付け根以外では、魚を横切る向きには入れません。", draft.pts));
         return;
       }
-      const ev = evalStroke(draft.pts, t, tol);
-      if (ev.cov < 0.6) { commit(reject(ng, `${t.name}の線が短すぎます（必要な長さの${Math.round(ev.cov * 100)}%）。端から端まで切り進めましょう。`)); return; }
-      ng = { ...ng, cuts: { ...ng.cuts, [`${s}_${cls.k}`]: { ...ev, pts: draft.pts } } };
-      if (!ev.dirOk) { ng = withPen(ng, "proc", 2, `${s === "A" ? "1" : "2"}枚目の${t.name}の向きが逆`); notes.unshift("向きが逆です。" + t.dirMsg); }
-      const q = ev.acc >= 0.8 && ev.dirOk ? "good" : ev.acc >= 0.5 ? "warn" : "bad";
-      let detail = `平均のずれ ${ev.meanAbs.toFixed(1)}（許容 ${tol}）、届いた長さ ${Math.round(ev.cov * 100)}%。`;
-      if (t.inward) detail += ev.inward > 0.5 * tol ? (q === "good" ? "わずかに身の内側に寄っています。" : "身の内側に入りすぎて、身が削れています。") : ev.outward > 0.8 * tol ? (q === "good" ? "わずかに外側（縁）に寄っています。" : "外側（縁）に寄りすぎて、ヒレの骨が身に残りやすくなります。") : "";
-      else if (cls.k === "spine") detail += ev.meanAbs > 0.6 * tol ? "中骨から刃が離れ、骨に身が残りました。" : "中骨にぴったり沿っています。";
-      const finishedSide = ng.cuts[`${s}_belly`] && ng.cuts[`${s}_back`] && ng.cuts[`${s}_spine`];
-      let title = `${t.name}：${!ev.dirOk ? "向きが逆です" : q === "good" ? "きれいに切れました" : q === "warn" ? "まずまずです" : "ずれが大きいです"}`;
-      if (finishedSide && s === "A") { ng = { ...ng, aRemoved: true }; title = "1枚目の身が外れました"; detail += " 片身が中骨から離れました。次は魚を裏返します。"; }
-      ng = say(ng, q, title, detail + (notes.length ? " " + notes.join(" ") : ""), F.cutLessons[cls.k]);
-      if (finishedSide && s === "B") { ng = { ...ng, phase: "result" }; }
-      commit(ng);
+      if (si.inside < 8) { commit(say(ng, "info", "まな板を切りました", "包丁は魚に当たっていません。" + tail)); return; }
+      const dmg = si.inside / F.bodyLen * 70;
+      const face = visibleFace(g);
+      ng = { ...ng, gashes: ng.gashes.concat([{ pts: draft.pts, face, len: si.inside }]), damage: ng.damage + dmg };
+      if (ng.damage >= 100) {
+        commit(failWith(ng, "damage", "失敗：身がぼろぼろになりました", `狙いのない切り込みを重ねたため、身がずたずたになりました（身の傷み度 ${Math.round(ng.damage)}%）。`,
+          "包丁は、切る場所と向きを決めてから入れます。迷ったら「ヒント」でガイドを確認しましょう。", draft.pts));
+        return;
+      }
+      const where = si.my < F.SPY ? "背側の身" : "腹側の身";
+      commit(say(ng, "bad", "身に切り傷を入れてしまいました", `${where}に狙いのない切り込みが入りました（身の傷み度 ${Math.round(ng.damage)}%。100%で失敗）。どこを切るのか決めてから包丁を入れましょう。${tail}`,
+        "余計な切り傷は、見た目が悪くなるだけでなく、身が崩れたり傷みやすくなったりします。"));
+      return;
     }
+
+    const k = cls.k; const t = F.targets[k];
+    const key = ["belly", "back", "spine"].includes(k) ? `${s}_${k}` : k;
+    let ev = cls.ev;
+    const prev = ng.cuts[key];
+    if (prev) {
+      // 同じ線を引き直した：切り込みを継ぎ足す
+      const merged = evalStroke(prev.pts.concat(draft.pts), t, tol);
+      ev = { ...merged, dirOk: prev.dirOk && cls.ev.dirOk };
+      ng = { ...ng, cuts: { ...ng.cuts, [key]: { ...ev, pts: prev.pts.concat(draft.pts) } } };
+      commit(say(ng, ev.cov > prev.cov + 0.02 ? "info" : "warn", `${labelOf(k)}：切り込みを継ぎ足しました`,
+        `届いた長さ ${Math.round(prev.cov * 100)}% → ${Math.round(ev.cov * 100)}%、平均のずれ ${ev.meanAbs.toFixed(1)}。${ev.cov <= prev.cov + 0.02 ? "同じところを二度切ったので、切り口が荒れました。" : ""}${tail}`));
+      return;
+    }
+
+    // 尾を切り落とす
+    if (k === "tail") {
+      ng = withLoss(withPen({ ...ng, tailOff: true }, "proc", 3, "尾を切り落とした"), "both", 4, "尾を落としたため尾側の身が崩れた");
+      commit(say(ng, "bad", "尾を切り落としてしまいました", "三枚おろしでは尾は中骨に付けたままにします。尾の付け根は、身を中骨から切り離すときに包丁を入れる起点です。尾がないと身を押さえにくく、尾側の身が崩れます。" + tail,
+        "尾は中骨に付けたまま残し、切り離しの起点にします。"));
+      return;
+    }
+
+    let detail = `目標線からの平均のずれ ${ev.meanAbs.toFixed(1)}（許容 ${tol.toFixed(1)}）、届いた長さ ${Math.round(ev.cov * 100)}%。`;
+    const q = ev.acc >= 0.8 && ev.dirOk ? "good" : ev.acc >= 0.5 ? "warn" : "bad";
+    if (!ev.dirOk && t.dirMsg) { ng = withPen(ng, "proc", 2, `${labelOf(k)}の向きが逆`); notes.unshift("向きが逆です。" + t.dirMsg); }
+    ng = { ...ng, cuts: { ...ng.cuts, [key]: { ...ev, pts: draft.pts } } };
+    let title = `${labelOf(k)}：${!ev.dirOk && t.dir ? "向きが逆です" : q === "good" ? "きれいに切れました" : q === "warn" ? "まずまずです" : "ずれが大きいです"}`;
+    let lesson;
+
+    if (["zeigo", "head", "gut"].includes(k)) {
+      const st = F.prep.find((x) => x.target === k);
+      lesson = st.lesson;
+      ng = { ...ng, prepDone: { ...ng.prepDone, [st.id]: true } };
+      const missing = st.req.filter((r) => !g.prepDone[r]);
+      if (k === "head" && missing.length) {
+        const names = missing.map((r) => F.prep.find((x) => x.id === r).label).join("・");
+        ng = withLoss(withPen(ng, "proc", 3, `「${names}」より先に頭を落とした`), "both", 2, "頭の切り口にうろこが入った");
+        notes.unshift(`「${names}」より先に頭を落としたため、魚を押さえにくくなり、切り口にうろこが入りました。${st.reqWhy}`);
+      }
+      if (k === "gut" && !g.prepDone.head) notes.unshift("頭を付けたまま腹を開きました（この方法でも内臓は出せますが、えらの処理が別に必要です）。");
+      if (k === "head") detail += ev.meanSigned > 0.5 * tol ? "後ろ寄りに切ったため、肩の身が少し減りました。" : ev.meanSigned < -0.5 * tol ? "前寄りに切ったため、えらぶたの骨が残りやすい位置です。" : "胸ビレのすぐ後ろで、ちょうどよい位置です。";
+      if (k === "zeigo" && ev.cov < 0.9) detail += "取り残しのぜいごがあります。";
+      if (k === "gut" && ev.inward > 1.2 * tol) { ng = withLoss(ng, "both", 3, "腹を深く切りすぎ、内臓を傷つけた"); detail += "深く切りすぎて内臓を傷つけ、腹の身に臭みが移りました。"; }
+    } else {
+      // 三枚おろしの線
+      ng = lateChecks(ng, notes);
+      lesson = F.cutLessons[k];
+      if (t.inward) detail += ev.inward > 0.5 * tol ? (q === "good" ? "わずかに身の内側に寄っています。" : "身の内側に入りすぎて、身が削れています。") : ev.outward > 0.8 * tol ? (q === "good" ? "わずかに外側（縁）に寄っています。" : "外側（縁）に寄りすぎて、ヒレの骨が身に残りやすくなります。") : "";
+      if (k === "spine") {
+        const b = ng.cuts[`${s}_belly`], bk = ng.cuts[`${s}_back`];
+        const weakOutline = !b || !bk || b.cov < 0.75 || bk.cov < 0.75;
+        const fragileTear = F.fragile && ev.meanAbs > 1.6 * tol;
+        if (weakOutline || fragileTear) {
+          ng = withPen({ ...ng, torn: { ...ng.torn, [s]: true } }, "proc", weakOutline ? 3 : 1, weakOutline ? `${s === "A" ? "1" : "2"}枚目：外周の切り込みが足りないまま切り離した` : `${s === "A" ? "1" : "2"}枚目：中骨から刃が離れて身が割れた`);
+          title = `${s === "A" ? "1" : "2"}枚目の身が割れてしまいました`;
+          detail += weakOutline ? "腹と背の切り込みが端まで入っていないまま切り離したため、身が骨から離れず、引きはがすように割れてしまいました。" : `中骨から刃が離れ、やわらかい${F.name}の身が割れてしまいました。`;
+        } else detail += ev.meanAbs > 0.6 * tol ? "中骨から刃が離れ、骨に身が残りました。" : "中骨にぴったり沿っています。";
+        if (s === "A") { ng = { ...ng, aRemoved: true }; detail += " 片身が中骨から離れました。次は「手」で魚を裏返します。"; if (!g.torn.A && !ng.torn.A) title = "1枚目の身が外れました"; }
+        else ng = { ...ng, phase: "result" };
+      }
+    }
+    commit(say(ng, ng.torn[s] && k === "spine" ? "bad" : q, title, detail + (notes.length ? " " + notes.join(" ") : ""), lesson));
   };
 
-  const flip = () => {
-    if (!(g.phase === "cut" && g.side === "A" && g.aRemoved)) return;
-    commit(say({ ...g, side: "B" }, "info", "裏返しました", "中骨が付いた側を下にしました。頭側は右になります。背側・腹側に切り込みを入れてから、中骨に沿って切り離しましょう。", F.cutLessons.flip));
-  };
-
-  const toPrep = () => commit(say({ ...g, phase: "prep", selPart: null, xray: false }, "info", "下処理を始めます", "下の道具箱から道具を持ち替えて、魚やまな板に直接使ってください。何をしたかは、道具と使った場所から判定します。魚種や料理によって手順は変わりますが、ここではアジの基本的な手順で進めます。", null));
+  const toPrep = () => commit(say({ ...g, phase: "work", selPart: null, xray: false }, "info", "下処理を始めます", "下の道具箱から道具を持ち替えて、魚やまな板に直接使ってください。何をしたかは、道具と使った場所から判定します。包丁は引いたとおりに入るので、切る場所を決めてから使いましょう。", null));
 
   const undo = () => {
     if (draft) { setDraft(null); setG(say(g, "info", "線を消しました", "もう一度、魚の上をドラッグして線を引いてください。")); return; }
+    if (g.phase === "failed" && !mode.undoAfterFail) { setG(say(g, "bad", "職人モードでは戻れません", "失敗したら最初からやり直します。")); return; }
     if (!hist.length) { setG(say(g, "info", "取り消せる操作がありません", "これが最初の状態です。")); return; }
     const prev = hist[hist.length - 1];
     setHist(hist.slice(0, -1));
@@ -1414,23 +1600,16 @@ function App({ boot }) {
   const reset = () => {
     if (!resetArmed) { setResetArmed(true); return; }
     setResetArmed(false);
-    setG(newGame(g.fishId, g.modeId)); setHist([]); setDraft(null); setExtra({ hintsUsed: 0, undos: 0 });
-  };
-  const hint = () => {
-    if (hintsLeft <= 0) { setG(say(g, "warn", "ヒントは使い切りました", `${mode.name}のヒントは${mode.hints}回までです。`)); return; }
-    setExtra({ ...extra, hintsUsed: extra.hintsUsed + 1 });
-    setHintUntil(Date.now() + 6000);
-    const hs = handKey ? handRec(F, handKey) : null;
-    setG(say(g, "info", "ヒント", adv.hint + (hs ? ` 押さえる手：${hs.why}` : "") + (mode.guide !== "full" && adv.target ? "（6秒間、包丁を入れる位置を表示します）" : "")));
+    start(g.fishId, g.modeId);
   };
 
   // ---- 持っている道具から操作の種類を決める ----
   let drawMode = "none";
-  if (g.phase === "prep" || g.phase === "cut") {
-    const aOff = g.phase === "cut" && g.side === "A" && g.aRemoved;
+  if (g.phase === "work") {
+    const aOff = g.side === "A" && g.aRemoved;
     if (tool === "hand") drawMode = "hand";
-    else if (tool === "knife") drawMode = aOff ? "tap" : "line";
-    else if (tool === "scaler") drawMode = g.phase === "prep" && !g.prepDone.scale ? "scrub" : "tap";
+    else if (tool === "knife") drawMode = "line";
+    else if (tool === "scaler") drawMode = !g.prepDone.scale && !aOff ? "scrub" : "tap";
     else drawMode = "tap";
   }
   // ---- ガイド表示 ----
@@ -1440,29 +1619,40 @@ function App({ boot }) {
     if (mode.guide === "full" || hintActive) guideKeys.push({ key, faint: false, arrow: true });
     else if (mode.guide === "faint") guideKeys.push({ key, faint: true, arrow: false });
   };
-  if (g.phase === "prep") addGuide(adv.target);
-  if (g.phase === "cut" && !(g.side === "A" && g.aRemoved)) {
-    if (mode.guide === "full" || hintActive) addGuide(adv.target);
+  if (g.phase === "work" && !(g.side === "A" && g.aRemoved)) {
+    if (adv.target && !["belly", "back", "spine"].includes(adv.target)) addGuide(adv.target);
+    else if (mode.guide === "full" || hintActive) addGuide(adv.target);
     else if (mode.guide === "faint") ["belly", "back", "spine"].filter((k) => !g.cuts[`${g.side}_${k}`]).forEach((k) => guideKeys.push({ key: k, faint: true, arrow: false }));
   }
-  const handKey = g.phase === "prep" ? adv.step : g.phase === "cut" ? adv.target : null;
+  const handKey = adv.step || adv.target || null;
   const handSpot = handKey ? handRec(F, handKey) : null;
-  const draftLabel = (() => {
-    if (!draft) return null;
-    if (g.phase === "cut") { const c = classify(draft.pts); return c ? `「${F.targets[c.k].name}」として判定します` : "どの切り込みにも当てはまりません"; }
-    if (g.phase === "prep") { const c = classifyPrep(draft.pts); return c ? `「${prepLabel(c.k)}」として判定します` : "どの作業にも当てはまりません"; }
-    return null;
+  const draftInfo = (() => {
+    if (!draft || g.phase !== "work") return null;
+    const hc = handCheck(F, g, draft.pts);
+    if (hc.hit) return { warn: true, text: "このまま切ると、押さえている手を切ります！" };
+    const c = classify(draft.pts);
+    if (c) return { warn: c.k === "tail", text: `「${labelOf(c.k)}」として包丁を入れます` };
+    const si = strayInfo(F, g, draft.pts);
+    if (si.severed) return { warn: true, text: "このまま切ると、魚が胴の途中で切断されます！" };
+    return { warn: si.inside >= 8, text: si.inside >= 8 ? "どの作業にも当てはまりません。このまま切ると身に傷が入ります" : "魚に当たらない線です" };
   })();
+  const hint = () => {
+    if (hintsLeft <= 0) { setG(say(g, "warn", "ヒントは使い切りました", `${mode.name}のヒントは${mode.hints}回までです。`)); return; }
+    setExtra({ ...extra, hintsUsed: extra.hintsUsed + 1 });
+    setHintUntil(Date.now() + 6000);
+    setG(say(g, "info", "ヒント", adv.hint + (handSpot ? ` 押さえる手：${handSpot.why}` : "") + (mode.guide !== "full" && adv.target ? "（6秒間、包丁を入れる位置と手の置き場所を表示します）" : "")));
+  };
   const scalePct = Math.round(100 * g.scaleClean.filter(Boolean).length / g.scaleClean.length);
-  const toolName = (TOOLS.find((t) => t.id === tool) || {}).name;
+  const toolInfo = TOOLS.find((t) => t.id === tool) || {};
 
   let status = "";
   if (g.phase === "inspect") status = "部位をクリックすると説明が出ます";
+  else if (g.phase === "failed") status = "失敗しました";
   else if (drawMode === "scrub") status = `うろこ取り：尾 → 頭の方向にこする（${scalePct}%）`;
-  else if (drawMode === "line") status = draft ? draftLabel : "出刃包丁：ドラッグして包丁の線を引く";
-  else if (g.phase === "cut" && g.aRemoved && g.side === "A") status = "1枚目の身が外れた状態（手で魚をタップすると裏返す）";
+  else if (drawMode === "line") status = draftInfo ? draftInfo.text : "出刃包丁：ドラッグして包丁の線を引く";
+  else if (g.side === "A" && g.aRemoved) status = "1枚目の身が外れた状態（手で魚をタップすると裏返す）";
   else if (drawMode === "hand") status = "手：ドラッグで押さえる位置を動かす";
-  else if (drawMode === "tap") status = `${toolName}：魚・まな板をタップして使う`;
+  else if (drawMode === "tap") status = `${toolInfo.name}：魚・まな板をタップして使う`;
 
   const header = html`<header className="top">
     <div className="brand"><small>料理シミュレーション</small><h1>職人への道！三枚おろしシミュレーター</h1></div>
@@ -1472,7 +1662,7 @@ function App({ boot }) {
 
   if (g.phase === "result") {
     return html`<div className="wrap">
-      ${header}<${Stepper} phase="result"/>
+      ${header}<${Stepper} idx=${3}/>
       <${ResultView} F=${F} g=${g} mode=${mode} extra=${extra}
         onRetry=${() => start(g.fishId, g.modeId)} onTitle=${() => { setScreen("title"); }}/>
       <div className="controls" style=${{ gridTemplateColumns: "repeat(2, minmax(0,1fr))" }}>
@@ -1482,37 +1672,45 @@ function App({ boot }) {
     </div>`;
   }
 
-  const sideTray = g.phase === "cut" && g.aRemoved;
+  const failed = g.phase === "failed";
+  const sideTray = g.aRemoved;
   return html`<div className="wrap">
     ${header}
-    <${Stepper} phase=${g.phase}/>
+    <${Stepper} idx=${stageIndex(g, F)} failed=${failed}/>
     <div className="main">
       <div className="boardcol">
         <div className="boardbox">
-          <${FishView} F=${F} g=${g} mode=${mode} guideKeys=${guideKeys} draft=${draft} onPart=${onPart}
+          <${FishView} F=${F} g=${g} guideKeys=${guideKeys} draft=${draft} onPart=${onPart}
             drawMode=${drawMode} onStroke=${onStroke} onScrub=${onScrub} hintFlash=${hintActive}
-            onHand=${onHand} handHint=${handSpot && (mode.guide === "full" || hintActive) ? handSpot : null} tool=${tool} onTap=${onTap}/>
+            onHand=${onHand} handHint=${handSpot && (mode.guide === "full" || hintActive) && g.phase === "work" ? handSpot : null} tool=${tool} onTap=${onTap}/>
           ${status && html`<div className="status">${status}</div>`}
         </div>
-        ${g.phase !== "inspect" && html`<${Toolbar} tool=${tool} onTool=${(t) => { setTool(t); setDraft(null); }} suggest=${mode.id === "practice" ? adv.tool : null}/>`}
+        ${g.phase === "work" && html`<${Toolbar} tool=${tool} onTool=${(t) => { setTool(t); setDraft(null); }} suggest=${mode.id === "practice" ? adv.tool : null}/>`}
         <div className="controls">
-          <button id="undo" className="btn" onClick=${undo}>戻る</button>
+          <button id="undo" className="btn" onClick=${undo} disabled=${failed && !mode.undoAfterFail}>戻る</button>
           <button id="reset" className=${"btn danger" + (resetArmed ? " armed" : "")} onClick=${reset}>${resetArmed ? "もう一度押す" : "リセット"}</button>
-          <button id="hint" className="btn" onClick=${hint} disabled=${hintsLeft <= 0}>ヒント<span className="sub">${hintsLeft === Infinity ? "無制限" : `残り${Math.max(0, hintsLeft)}回`}</span></button>
-          <button id="decide" className="btn primary" onClick=${decide} disabled=${!draft}>決定</button>
+          <button id="hint" className="btn" onClick=${hint} disabled=${hintsLeft <= 0 || failed}>ヒント<span className="sub">${hintsLeft === Infinity ? "無制限" : `残り${Math.max(0, hintsLeft)}回`}</span></button>
+          <button id="decide" className="btn primary" onClick=${decide} disabled=${!draft || failed}>決定</button>
         </div>
         ${sideTray && html`<div className="tray fadein">
-          <svg viewBox="215 100 400 170" role="img" aria-label="外した1枚目の身"><${FishDefs}/><${Fillet} F=${F} g=${g} s="A"/></svg>
-          <span>外した身：1枚目${g.side === "B" ? "（2枚目をおろし中）" : ""}</span>
+          <svg viewBox="215 95 400 180" role="img" aria-label="外した1枚目の身"><${FishDefs}/><${Fillet} F=${F} g=${g} s="A"/></svg>
+          <span>外した身：1枚目${g.side === "B" ? "（2枚目をおろし中）" : ""}${g.torn.A ? "（身割れあり）" : ""}</span>
         </div>`}
       </div>
 
       <aside className="panel">
-        <div className="nowbox">
+        ${failed ? html`<div className="failbox fadein" id="failbox">
+            <h2>${g.fail.title}</h2>
+            <p>${g.fail.text}</p>
+            <div className="lesson"><b>なぜ？</b> ${g.fail.lesson}</div>
+            ${mode.undoAfterFail && html`<button id="fail-undo" className="btn" onClick=${undo}>失敗する直前に戻る</button>`}
+            <button id="fail-restart" className="btn primary" onClick=${() => start(g.fishId, g.modeId)}>最初からやり直す</button>
+            <button id="fail-title" className="btn" onClick=${() => setScreen("title")}>魚・難易度を選び直す</button>
+          </div>` : html`<div className="nowbox">
           <span className="eyebrow">いまの工程</span>
           <span className="now">${adv.now}</span>
           <span className="next">次：${adv.next}</span>
-        </div>
+        </div>`}
 
         ${g.phase === "inspect" && html`<div style=${{ display: "grid", gap: "10px" }}>
           <p>頭は左、腹は手前（画面下）、背は奥（画面上）です。主な部位を確認しましょう。</p>
@@ -1521,25 +1719,23 @@ function App({ boot }) {
           <button id="to-prep" className="btn primary" onClick=${toPrep}>下処理へ進む</button>
         </div>`}
 
-        ${g.phase === "prep" && html`<div style=${{ display: "grid", gap: "10px" }}>
-          <span className="eyebrow">下処理の進み具合</span>
+        ${g.phase === "work" && html`<div style=${{ display: "grid", gap: "10px" }}>
+          <span className="eyebrow">下処理</span>
           <ul className="checks">${F.prep.map((st) => html`<li key=${st.id} className=${g.prepDone[st.id] ? "ok" : ""}>${g.prepDone[st.id] ? "✓ " : ""}${mode.id === "master" && !g.prepDone[st.id] ? "？" : st.label}</li>`)}</ul>
-          <p className="note">持っている道具：<b>${toolName}</b>（${(TOOLS.find((t) => t.id === tool) || {}).desc}）</p>
-          ${tool === "scaler" && !g.prepDone.scale && html`<div className="bar" aria-label="うろこ取りの進み具合"><i style=${{ width: scalePct + "%" }}></i></div>`}
-          ${draftLabel && html`<p className="note">${draftLabel}。よければ「決定」、引き直すならもう一度ドラッグします。</p>`}
-        </div>`}
-
-        ${g.phase === "cut" && html`<div style=${{ display: "grid", gap: "10px" }}>
+          <span className="eyebrow">三枚おろし</span>
           <ul className="checks">
-            ${["A", "B"].flatMap((s) => (s === "A" ? ["belly", "back", "spine"] : ["back", "belly", "spine"]).map((k) => html`<li key=${s + k} className=${g.cuts[`${s}_${k}`] ? "ok" : ""}>${s === "A" ? "1枚目" : "2枚目"}・${{ belly: "腹", back: "背", spine: "中骨" }[k]}</li>`))}
+            ${["A", "B"].flatMap((sd) => (sd === "A" ? ["belly", "back", "spine"] : ["back", "belly", "spine"]).map((k) => html`<li key=${sd + k} className=${g.cuts[`${sd}_${k}`] ? "ok" : ""}>${sd === "A" ? "1枚目" : "2枚目"}・${{ belly: "腹", back: "背", spine: "中骨" }[k]}</li>`))}
           </ul>
+          ${g.damage > 0 && html`<div className="meter"><span>身の傷み度 ${Math.round(g.damage)}%（100%で失敗）</span><div className="bar"><i style=${{ width: Math.min(100, g.damage) + "%" }}></i></div></div>`}
+          <p className="note">持っている道具：<b>${toolInfo.name}</b>（${toolInfo.desc}）</p>
+          ${tool === "scaler" && !g.prepDone.scale && html`<div className="bar" aria-label="うろこ取りの進み具合"><i style=${{ width: scalePct + "%" }}></i></div>`}
           ${g.side === "A" && g.aRemoved && html`<button id="flip" className="btn primary" onClick=${flip}>魚を裏返す</button>`}
-          ${draftLabel && html`<p className="note">${draftLabel}。よければ「決定」、引き直すならもう一度ドラッグします。</p>`}
+          ${draftInfo && html`<p className=${"msg " + (draftInfo.warn ? "bad" : "info")} id="draftinfo">${draftInfo.text}。よければ「決定」、やめるなら「戻る」か、もう一度ドラッグして引き直します。</p>`}
+          <p className="note handnote"><b>押さえる手：</b>「手」を持つか、手のアイコンを直接ドラッグして動かせます。${handSpot && mode.guide === "full" ? handSpot.why : "刃の通り道と、刃の進む先には置かないこと。"}${F.spinyHand ? `${F.name}は背ビレの棘に注意。` : ""}</p>
         </div>`}
 
-        ${(g.phase === "prep" || g.phase === "cut") && html`<p className="note handnote"><b>押さえる手：</b>「手」を持つか、手のアイコンを直接ドラッグして動かせます。${handSpot && mode.guide === "full" ? handSpot.why : drawMode === "line" ? "刃の通り道と、刃の進む先には置かないこと。" : ""}</p>`}
-        <${Msg} m=${g.msg}/>
-        ${g.lesson && html`<div className="lesson"><b>なぜ？</b> ${g.lesson}</div>`}
+        ${!failed && html`<${Msg} m=${g.msg}/>`}
+        ${!failed && g.lesson && html`<div className="lesson"><b>なぜ？</b> ${g.lesson}</div>`}
       </aside>
     </div>
     <${HowTo}/>
@@ -1547,10 +1743,10 @@ function App({ boot }) {
 }
 
 // 自動テスト用の読み取り専用フック（ゲームの動作には影響しない）
-window.__sanmaiFish = FISH_LIST[0];
+window.__sanmaiFish = FISH;
 function mount(data) {
   const root = ReactDOM.createRoot(document.getElementById("root"));
-  root.render(html`<${App} boot=${data && data.g ? data : {}}/>`);
+  root.render(html`<${App} boot=${data && data.g && data.g.fishId && FISH[data.g.fishId] && data.g.hand ? data : {}}/>`);
 }
 const hot = window.claude && window.claude.hot;
 if (hot && hot.ready) hot.ready(mount); else mount((hot && hot.data) || {});

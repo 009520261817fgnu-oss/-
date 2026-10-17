@@ -74,6 +74,7 @@ namespace WorldSim.Core.Content
             foreach (RecipeDef r in _recipes.All)
             {
                 foreach (string res in r.Inputs.Keys) RequireResource(res, $"recipe '{r.Id}'");
+                foreach (string res in r.OptionalInputs.Keys) RequireResource(res, $"recipe '{r.Id}'");
                 foreach (string res in r.Outputs.Keys) RequireResource(res, $"recipe '{r.Id}'");
             }
             foreach (BuildingDef b in _buildings.All)
@@ -153,6 +154,7 @@ namespace WorldSim.Core.Content
             string id = o.RequireString("id", "recipe");
             var def = new RecipeDef { Id = id };
             ReadNumbers(o.GetObject("inputs"), def.Inputs, $"recipe '{id}'");
+            ReadNumbers(o.GetObject("optionalInputs"), def.OptionalInputs, $"recipe '{id}'");
             ReadNumbers(o.GetObject("outputs"), def.Outputs, $"recipe '{id}'");
             if (def.Outputs.Count == 0) throw new FormatException($"recipe '{id}': needs at least one output");
             return def;

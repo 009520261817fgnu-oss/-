@@ -37,7 +37,8 @@ namespace WorldSim.Core.Systems
                 if (co.Closed || co.Recipe == null) continue;
                 foreach (string res in co.Recipe.Outputs.Keys)
                 {
-                    if (co.Sells(res) || co.Stock(res) <= 0) continue;
+                    // Producers that also sell to residents (offices) keep a retail reserve, then sell the rest.
+                    if (Available(co, res) <= 0) continue;
                     if (!sellers.TryGetValue(res, out List<Company> list)) sellers[res] = list = new List<Company>();
                     list.Add(co);
                 }
@@ -60,6 +61,11 @@ namespace WorldSim.Core.Systems
             {
                 int workers = Math.Max(1, co.Workers.Count);
                 foreach (var kv in co.Recipe.Inputs)
+                {
+                    double need = kv.Value * workers * InputStockDays - co.Stock(kv.Key);
+                    if (need > 0.5) yield return new KeyValuePair<string, double>(kv.Key, need);
+                }
+                foreach (var kv in co.Recipe.OptionalInputs)
                 {
                     double need = kv.Value * workers * InputStockDays - co.Stock(kv.Key);
                     if (need > 0.5) yield return new KeyValuePair<string, double>(kv.Key, need);
@@ -97,7 +103,7 @@ namespace WorldSim.Core.Systems
             {
                 foreach (Company s in list)
                 {
-                    if (s == buyer || s.Stock(res) <= 0) continue;
+                    if (s == buyer || Available(s, res) <= 0) continue;
                     float h = w.Network.TravelHours(s.BuildingId, buyer.BuildingId);
                     if (float.IsPositiveInfinity(h)) continue;
                     options.Add((price + rate * h, s, h));
@@ -113,7 +119,7 @@ namespace WorldSim.Core.Systems
             {
                 if (need <= 0.5) break;
                 if (opt.delivered > importDelivered) break;
-                double qty = Math.Min(need, opt.seller.Stock(res));
+                double qty = Math.Min(need, Available(opt.seller, res));
                 qty = Math.Min(qty, Math.Floor(buyer.Cash / opt.delivered));
                 if (qty <= 0) break;
                 long goodsCost = (long)Math.Round(qty * price);
@@ -157,7 +163,7 @@ namespace WorldSim.Core.Systems
                 foreach (Company s in kv.Value)
                 {
                     double perDay = s.Recipe.Outputs[kv.Key] * Math.Max(1, s.Workers.Count);
-                    double qty = s.Stock(kv.Key) - perDay * SellerReserveDays;
+                    double qty = Available(s, kv.Key) - perDay * SellerReserveDays;
                     if (qty <= 0) continue;
                     float hours = w.Network.HoursToOutside(s.BuildingId);
                     if (float.IsPositiveInfinity(hours)) continue;
@@ -171,6 +177,15 @@ namespace WorldSim.Core.Systems
                     w.Trips.Add(new Trip(s.BuildingId, 0, Trucks(revenue), true));
                 }
             }
+        }
+
+        /// <summary>Stock a company can sell to other companies: all of it, minus a few days of retail sales if it also sells to residents.</summary>
+        private static double Available(Company co, string res)
+        {
+            double stock = co.Stock(res);
+            if (!co.Sells(res)) return stock;
+            double daily = co.SalesAvg.TryGetValue(res, out double a) ? a : 0;
+            return stock - Math.Max(30, daily * RetailStockDays);
         }
 
         private static void PayFreight(WorldState w, Company payer, long amount)

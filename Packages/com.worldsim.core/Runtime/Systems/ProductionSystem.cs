@@ -57,6 +57,12 @@ namespace WorldSim.Core.Systems
                 }
                 if (batches <= 0) continue;
 
+                // Optional inputs (business services): use what is in stock; batches without them are less productive.
+                double supported = batches;
+                foreach (var kv in co.Recipe.OptionalInputs) supported = Math.Min(supported, co.Stock(kv.Key) / kv.Value);
+                foreach (var kv in co.Recipe.OptionalInputs) co.Inventory[kv.Key] = Math.Max(0, co.Stock(kv.Key) - kv.Value * supported);
+                batches = supported + (batches - supported) * RecipeDef.OptionalShortfallEfficiency;
+
                 foreach (var kv in co.Recipe.Inputs) co.Inventory[kv.Key] = Math.Max(0, co.Stock(kv.Key) - kv.Value * batches);
                 foreach (var kv in co.Recipe.Outputs)
                 {

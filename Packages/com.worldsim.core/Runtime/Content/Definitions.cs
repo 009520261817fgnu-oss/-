@@ -85,7 +85,13 @@ namespace WorldSim.Core.Content
     {
         public string Id;
         public readonly Dictionary<string, double> Inputs = new Dictionary<string, double>();
+        /// <summary>
+        /// Inputs that help but are not essential (e.g. business services): bought when available;
+        /// without them a batch is <see cref="OptionalShortfallEfficiency"/> as productive.
+        /// </summary>
+        public readonly Dictionary<string, double> OptionalInputs = new Dictionary<string, double>();
         public readonly Dictionary<string, double> Outputs = new Dictionary<string, double>();
+        public const double OptionalShortfallEfficiency = 0.9;
     }
 
     public sealed class TechDef

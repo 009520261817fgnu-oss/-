@@ -11,7 +11,7 @@ using WorldSim.Core.Simulation;
 using WorldSim.Core.World;
 
 // Headless runner for the WorldSim core.
-//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json] [--probe [--probe-days N]] [--bench [--bench-out file.json] [--bench-presets S,M,L,XL]] [--preset S|M|L|XL]
+//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json] [--probe [--probe-days N]] [--bench [--bench-out file.json] [--bench-presets S,M,L,XL]] [--preset S|M|L|XL] [--regions N]
 ulong seed = 1;
 int days = 7;
 string png = null;
@@ -24,6 +24,7 @@ bool bench = false;
 string benchOut = null;
 string benchPresets = "S,M,L,XL";
 string preset = null;
+int regions = 1;
 int probeDays = 90;
 for (int i = 0; i < args.Length; i++)
 {
@@ -41,6 +42,7 @@ for (int i = 0; i < args.Length; i++)
         case "--bench-out": benchOut = args[++i]; break;
         case "--bench-presets": benchPresets = args[++i]; break;
         case "--preset": preset = args[++i]; break;
+        case "--regions": regions = int.Parse(args[++i]); break;
         case "--probe-days": probeDays = int.Parse(args[++i]); break;
         default: Console.Error.WriteLine($"unknown argument {args[i]}"); return 2;
     }
@@ -70,6 +72,29 @@ if (bench)
         File.WriteAllText(benchOut, Json.Serialize(doc));
         Console.WriteLine($"JSON written to {benchOut}");
     }
+    return 0;
+}
+
+if (regions > 1)
+{
+    // S5-4: several independent detailed regions, stepped hour by hour in region order.
+    var atlasSw = Stopwatch.StartNew();
+    WorldGenOptions baseOptions = preset == null ? new WorldGenOptions { Seed = seed } : BenchPreset.All.First(p => p.Name == preset).Options(seed);
+    Atlas atlas = Atlas.Create(content, baseOptions, regions);
+    var atlasRunner = new AtlasRunner(atlas, WorldFactory.CreateRunner);
+    double atlasGenMs = atlasSw.Elapsed.TotalMilliseconds;
+    atlasSw.Restart();
+    atlasRunner.StepMany(days * SimClock.TicksPerDay);
+    Console.WriteLine($"{regions} regions, {days} days in {atlasSw.Elapsed.TotalSeconds:0.0} s ({atlasSw.Elapsed.TotalMilliseconds / Math.Max(1, days):0.0} ms/day), generated in {atlasGenMs:0} ms");
+    foreach (Region r in atlas.Regions)
+    {
+        StatsSnapshot s = r.World.History[r.World.History.Count - 1];
+        Console.WriteLine($"  {r.Name}: seed {r.World.Seed:X16} pop {s.Population} unemp {s.UnemploymentRate:P1} hash {r.World.ComputeHash():X16}");
+    }
+    string atlasJson = WorldSim.Core.Persistence.SaveSystem.SaveAtlas(atlas);
+    Atlas reloaded = WorldSim.Core.Persistence.SaveSystem.LoadAtlas(content, atlasJson);
+    Console.WriteLine($"Atlas hash: {atlas.ComputeHash():X16}  save {atlasJson.Length / 1024} KB, reload match {reloaded.ComputeHash() == atlas.ComputeHash()}");
+    if (savePath != null) File.WriteAllText(savePath, atlasJson);
     return 0;
 }
 

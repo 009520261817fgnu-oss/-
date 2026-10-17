@@ -21,6 +21,14 @@ namespace WorldSim.Core.Bootstrap
         public int TownBlocksRadius = 3;
         /// <summary>Share of housing filled by the initial population.</summary>
         public double InitialOccupancy = 0.8;
+
+        /// <summary>The same options with another seed (each region of an atlas has its own).</summary>
+        public WorldGenOptions With(ulong seed)
+        {
+            var o = (WorldGenOptions)MemberwiseClone();
+            o.Seed = seed;
+            return o;
+        }
     }
 
     /// <summary>

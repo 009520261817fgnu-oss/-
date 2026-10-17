@@ -30,6 +30,8 @@ namespace WorldSim.Core.World
 
         public ContentDatabase Content { get; }
         public ulong Seed { get; }
+        /// <summary>Which region of the atlas this world is (S5-4); 1 for every single-region game.</summary>
+        public int RegionId { get; set; } = 1;
         public Terrain Terrain { get; }
         public SimClock Clock { get; } = new SimClock();
         public DeterministicRandom Random { get; }
@@ -518,6 +520,7 @@ namespace WorldSim.Core.World
         {
             var h = new StateHasher();
             h.Add(FormatVersion);
+            if (RegionId != 1) h.Add(RegionId); // region 1 hashes exactly like a pre-region world
             h.Add(Seed);
             h.Add(Clock.Tick);
             h.Add(Random.State);

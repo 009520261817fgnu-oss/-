@@ -19,15 +19,42 @@ namespace WorldSim.Core.Persistence
     public static class SaveSystem
     {
         public const string Format = "WorldSim.Save";
-        /// <summary>2: adds the controlled resident (life mode), tenure and relationships. 1 still loads.</summary>
-        public const int Version = 3;
+        /// <summary>
+        /// 4 (S5-4): an atlas of regions, each holding a version-3 world document. 3 adds causes and land
+        /// values, 2 the controlled resident (life mode). 1-3 still load, as a one-region atlas.
+        /// </summary>
+        public const int Version = 4;
+        /// <summary>Version of the per-region world document inside a v4 save.</summary>
+        public const int WorldVersion = 3;
 
-        public static string Save(WorldState w)
+        /// <summary>Saves a single world as a one-region atlas.</summary>
+        public static string Save(WorldState w) => SaveAtlas(Atlas.Single(w));
+
+        public static string SaveAtlas(Atlas atlas)
+        {
+            var regions = new List<object>();
+            foreach (Region r in atlas.Regions)
+                regions.Add(new Dictionary<string, object>
+                {
+                    ["id"] = r.Id, ["name"] = r.Name, ["detail"] = r.Detail.ToString(),
+                    ["world"] = WorldDocument(r.World),
+                });
+            return Json.Serialize(new Dictionary<string, object>
+            {
+                ["format"] = Format,
+                ["version"] = Version,
+                ["seed"] = Hex(atlas.Seed),
+                ["regions"] = regions,
+            });
+        }
+
+        /// <summary>One region's world in the version-3 layout (also a complete v3 save on its own).</summary>
+        public static Dictionary<string, object> WorldDocument(WorldState w)
         {
             var root = new Dictionary<string, object>
             {
                 ["format"] = Format,
-                ["version"] = Version,
+                ["version"] = WorldVersion,
                 ["worldFormat"] = WorldState.FormatVersion,
                 ["seed"] = Hex(w.Seed),
                 ["tick"] = (double)w.Clock.Tick,
@@ -53,15 +80,36 @@ namespace WorldSim.Core.Persistence
                 ["causes"] = Causes(w.Economy.Causes),
                 ["landValues"] = LandValues(w),
             };
-            return Json.Serialize(root);
+            return root;
         }
 
-        public static WorldState Load(ContentDatabase content, string json)
+        /// <summary>Loads a save as a single world: the first region of a v4 atlas, or a v1-v3 world.</summary>
+        public static WorldState Load(ContentDatabase content, string json) => LoadAtlas(content, json).Regions[0].World;
+
+        public static Atlas LoadAtlas(ContentDatabase content, string json)
         {
             if (!(Json.Parse(json) is IDictionary<string, object> root) || root.GetString("format") != Format)
                 throw new FormatException("WorldSimのセーブデータではありません");
             int version = root.GetInt("version");
             if (version > Version) throw new FormatException($"新しいバージョンのセーブデータです（{version} > {Version}）");
+            if (version <= WorldVersion) return Atlas.Single(LoadWorld(content, root));
+
+            var atlas = new Atlas { Seed = ParseHex(root.GetString("seed")) };
+            foreach (object o in Arr(root, "regions"))
+            {
+                var r = (IDictionary<string, object>)o;
+                if (r.GetString("detail") != nameof(RegionDetail.Detailed))
+                    throw new FormatException($"未対応の地域の種類です（{r.GetString("detail")}）");
+                atlas.Add(new Region { Id = r.GetInt("id"), Name = r.GetString("name"), World = LoadWorld(content, Obj(r, "world")) });
+            }
+            if (atlas.Regions.Count == 0) throw new FormatException("地域がありません");
+            return atlas;
+        }
+
+        private static WorldState LoadWorld(ContentDatabase content, IDictionary<string, object> root)
+        {
+            int version = root.GetInt("version");
+            if (version > WorldVersion) throw new FormatException($"新しいバージョンの世界データです（{version} > {WorldVersion}）");
 
             var t = Obj(root, "terrain");
             var terrain = new Terrain(t.GetInt("width"), t.GetInt("depth"), (float)t.GetDouble("cellSize"), (float)t.GetDouble("seaLevel"));

@@ -129,6 +129,29 @@ namespace WorldSim.Core.Tests
         }
 
         [Test]
+        public void PowerPlantsPolluteInProportionToOutputAndScrubbersHelp()
+        {
+            // Regression (S1-2): production used to reset every company's output, including power
+            // plants, so the energy system's record was lost and plants never polluted.
+            (float near, double output) Run(bool scrubbers, bool staffed)
+            {
+                WorldState w = TestContent.Village(staffed ? 6 : 0);
+                int plant = TestContent.PlaceSouth(w, "power_plant", 20);
+                Company co = w.Economy.Companies[plant];
+                if (scrubbers) { Research(w, "scrubbers"); co.AdoptedTechs.Add("scrubbers"); }
+                WorldFactory.CreateRunner(w).StepMany(10 * SimClock.TicksPerDay);
+                return (w.Environment.PollutionAt(new GridPos(21, 7)), co.LastOutput);
+            }
+            var dirty = Run(false, true);
+            var clean = Run(true, true);
+            var idle = Run(false, false);
+            Assert.Greater(dirty.output, 0, "the plant generated power");
+            Assert.Greater(dirty.near, 0, "a working plant pollutes");
+            Assert.Less(clean.near, dirty.near * 0.7f, "scrubbers reduce plant pollution");
+            Assert.AreEqual(0, idle.near, 1e-6, "an unstaffed plant generates nothing and does not pollute");
+        }
+
+        [Test]
         public void IndustryPollutesNearbyAndScrubbersHelp()
         {
             float Run(bool scrubbers)

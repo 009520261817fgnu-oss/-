@@ -64,7 +64,7 @@ namespace WorldSim.Core.Systems
                 double rate = co.Def.GetParam("pollution");
                 if (rate <= 0 || co.Closed || !w.TryGetBuilding(co.BuildingId, out Building b)) continue;
                 double activity = co.OutputCapacity > 0 ? Math.Min(1, co.LastOutput / co.OutputCapacity) : 0;
-                if (co.PowerOutput > 0) activity = co.PowerOutput > 0 ? Math.Min(1, co.LastOutput / co.PowerOutput) : 0;
+                if (co.PowerOutput > 0) activity = Math.Min(1, co.LastOutput / co.PowerOutput);
                 double amount = rate * activity * Math.Max(0, 1 + w.Effects.ForCompany(co, "pollution"));
                 if (amount <= 0) continue;
                 int gx = (b.Origin.X + b.Def.Width / 2) / EnvironmentState.PollutionCell;

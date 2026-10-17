@@ -26,6 +26,9 @@ namespace WorldSim.Core.Systems
             EconomyState e = w.Economy;
             foreach (Company co in e.Companies.Values)
             {
+                // Power plants have no recipe: their output is recorded earlier in the day by the
+                // energy system and must survive until pollution reads it.
+                if (co.PowerOutput > 0) continue;
                 co.InputShortage = false;
                 co.LastOutput = 0;
                 co.OutputCapacity = 0;

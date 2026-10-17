@@ -36,10 +36,13 @@ namespace WorldSim.Core.Tests
             return p;
         });
 
+        /// <summary>Mean relative change; also requires that every noise seed agrees (a real effect, not chance).</summary>
         private static double Change(string intervention, string key)
         {
             Probe p = Shared.Value;
-            return p.Results[intervention].Change(p.Baseline, key);
+            ProbeResult r = p.Results[intervention];
+            Assert.IsTrue(r.Consistent(p.Baseline, key), $"{intervention} → {key} depends on chance");
+            return r.Change(p.Baseline, key);
         }
 
         [Test]
@@ -47,7 +50,31 @@ namespace WorldSim.Core.Tests
         {
             Probe p = Shared.Value;
             ProbeResult again = CausalProbe.Run(TestContent.Load(), p.Save, null, ProbeDays);
-            foreach (string k in CausalProbe.Series) Assert.AreEqual(p.Baseline.Values[k], again.Values[k], k);
+            foreach (string k in CausalProbe.Series)
+            {
+                Assert.AreEqual(p.Baseline.Values[k], again.Values[k], k);
+                Assert.IsTrue(p.Baseline.Consistent(p.Baseline, k));
+            }
+        }
+
+        [Test]
+        public void ChanceEventsAreNotMistakenForEffects()
+        {
+            // Pension cuts do not touch the power plant; a blackout that appears under one noise seed
+            // only (a random breakdown) must be reported as chance.
+            Probe p = Shared.Value;
+            ProbeResult pension = p.Results["年金 0"];
+            if (Math.Abs(pension.Change(p.Baseline, "energySupply")) >= 0.01)
+                Assert.IsFalse(pension.Consistent(p.Baseline, "energySupply"));
+            Assert.AreEqual(CausalProbe.DefaultNoise.Length, p.Baseline.Runs.Count);
+        }
+
+        [Test]
+        public void ExpensiveElectricityBankruptsEnergyHungryFoodPlants()
+        {
+            Assert.AreEqual(-1.0, Change("電気料金 100円", "prod.food"), 1e-9);
+            Assert.Greater(Change("電気料金 100円", "imports"), 0.1, "food is imported instead");
+            Assert.Greater(Change("電気料金 100円", "unemployment"), 0.1);
         }
 
         [Test]

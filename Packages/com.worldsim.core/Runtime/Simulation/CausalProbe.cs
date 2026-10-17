@@ -17,16 +17,39 @@ namespace WorldSim.Core.Simulation
         public Intervention(string name, Action<WorldState> apply) { Name = name; Apply = apply; }
     }
 
-    /// <summary>Averages of the probed series over the last days of a run.</summary>
+    /// <summary>
+    /// Averages of the probed series over the last days of a run. With several noise seeds,
+    /// <see cref="Values"/> is the mean and <see cref="Runs"/> keeps each seed's values.
+    /// </summary>
     public sealed class ProbeResult
     {
         public string Name;
         public readonly SortedDictionary<string, double> Values = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly List<SortedDictionary<string, double>> Runs = new List<SortedDictionary<string, double>>();
 
-        /// <summary>Relative change against a baseline (0.1 = +10%). Zero baselines give ±1 or 0.</summary>
-        public double Change(ProbeResult baseline, string key)
+        /// <summary>Relative change of the means against a baseline (0.1 = +10%). Zero baselines give ±1 or 0.</summary>
+        public double Change(ProbeResult baseline, string key) => Relative(baseline.Values[key], Values[key]);
+
+        /// <summary>
+        /// True when the effect is negligible (under 1% on average) or every noise seed moves the value
+        /// the same way as the mean. False means chance events (a breakdown, who emigrates) decide the
+        /// outcome, e.g. a blackout that happened under one seed only.
+        /// </summary>
+        public bool Consistent(ProbeResult baseline, string key)
         {
-            double b = baseline.Values[key], v = Values[key];
+            double mean = Change(baseline, key);
+            if (Math.Abs(mean) < 0.01) return true;
+            int n = Math.Min(Runs.Count, baseline.Runs.Count);
+            for (int i = 0; i < n; i++)
+            {
+                double c = Relative(baseline.Runs[i][key], Runs[i][key]);
+                if (Math.Sign(c) != Math.Sign(mean) || Math.Abs(c) < 0.002) return false;
+            }
+            return true;
+        }
+
+        internal static double Relative(double b, double v)
+        {
             if (Math.Abs(b) < 1e-9) return Math.Abs(v) < 1e-9 ? 0 : Math.Sign(v);
             return (v - b) / Math.Abs(b);
         }
@@ -46,14 +69,30 @@ namespace WorldSim.Core.Simulation
             "prod.food", "prod.goods", "pollution", "commute", "energySupply", "traffic", "imports", "exports", "research",
         };
 
-        public static ProbeResult Run(ContentDatabase content, string baseSave, Intervention intervention, int days, int window = 14)
+        /// <summary>Noise seeds used by default: 0 keeps the saved random state, others re-seed it.</summary>
+        public static readonly ulong[] DefaultNoise = { 0, 1, 2 };
+
+        /// <summary>
+        /// Runs the intervention once per noise seed. Baseline and intervention get the same seed, so
+        /// each pair differs only by the intervention; averaging over seeds separates the effect from
+        /// chance (equipment breakdowns, which resident emigrates...).
+        /// </summary>
+        public static ProbeResult Run(ContentDatabase content, string baseSave, Intervention intervention, int days, ulong[] noise = null, int window = 14)
         {
-            WorldState w = SaveSystem.Load(content, baseSave);
-            intervention?.Apply(w);
-            Bootstrap.WorldFactory.CreateRunner(w).StepMany(days * SimClock.TicksPerDay);
-            var tail = w.History.Skip(Math.Max(0, w.History.Count - window)).ToList();
+            noise = noise ?? DefaultNoise;
             var r = new ProbeResult { Name = intervention?.Name ?? "baseline" };
-            foreach (string k in Series) r.Values[k] = tail.Count == 0 ? 0 : tail.Average(s => s.Get(k));
+            foreach (ulong seed in noise)
+            {
+                WorldState w = SaveSystem.Load(content, baseSave);
+                if (seed != 0) w.Random.State = DeterministicRandom.SplitMix(seed) | 1;
+                intervention?.Apply(w);
+                Bootstrap.WorldFactory.CreateRunner(w).StepMany(days * SimClock.TicksPerDay);
+                var tail = w.History.Skip(Math.Max(0, w.History.Count - window)).ToList();
+                var values = new SortedDictionary<string, double>(StringComparer.Ordinal);
+                foreach (string k in Series) values[k] = tail.Count == 0 ? 0 : tail.Average(s => s.Get(k));
+                r.Runs.Add(values);
+            }
+            foreach (string k in Series) r.Values[k] = r.Runs.Average(v => v[k]);
             return r;
         }
 
@@ -112,12 +151,18 @@ namespace WorldSim.Core.Simulation
         {
             keys = keys ?? Series;
             var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"（{baseline.Runs.Count}通りの乱数で平均。? は乱数によって向きが変わる＝偶然に左右される結果）");
             sb.Append("介入".PadRight(18)).AppendLine(string.Join(" ", keys.Select(k => k.PadLeft(12))));
             sb.Append("基準（値）".PadRight(18)).AppendLine(string.Join(" ", keys.Select(k => baseline.Values[k].ToString("G4").PadLeft(12))));
             foreach (ProbeResult r in results)
             {
                 sb.Append(r.Name.PadRight(18));
-                sb.AppendLine(string.Join(" ", keys.Select(k => { double c = r.Change(baseline, k) * 100; return ((c >= 0 ? "+" : "") + c.ToString("0.0") + "%").PadLeft(12); })));
+                sb.AppendLine(string.Join(" ", keys.Select(k =>
+                {
+                    double c = r.Change(baseline, k) * 100;
+                    string mark = r.Consistent(baseline, k) ? "" : "?"; // the seeds disagree: chance, not a dependable effect
+                    return ((c >= 0 ? "+" : "") + c.ToString("0.0") + "%" + mark).PadLeft(12);
+                })));
             }
             return sb.ToString();
         }

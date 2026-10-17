@@ -16,6 +16,7 @@ int days = 7;
 string png = null;
 bool demoEdits = false;
 bool companies = false;
+bool profile = false;
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -25,6 +26,7 @@ for (int i = 0; i < args.Length; i++)
         case "--png": png = args[++i]; break;
         case "--demo-edits": demoEdits = true; break;
         case "--companies": companies = true; break;
+        case "--profile": profile = true; break;
         default: Console.Error.WriteLine($"unknown argument {args[i]}"); return 2;
     }
 }
@@ -56,6 +58,7 @@ if (demoEdits)
     foreach (IWorldCommand cmd in edits) Console.WriteLine($"  {cmd.GetType().Name,-22} -> {cmd.Execute(world)}");
 }
 
+runner.Profile = profile;
 sw.Restart();
 runner.StepMany(days * SimClock.TicksPerDay);
 double simMs = sw.Elapsed.TotalMilliseconds;
@@ -65,6 +68,9 @@ Console.WriteLine($"Daily snapshots recorded: {history.Count}");
 int every = Math.Max(1, history.Count / 12);
 for (int i = every - 1; i < history.Count; i += every) PrintStats(history[i]);
 foreach (var ev in world.Events.TakeLast(15)) Console.WriteLine($"  [{ev.Tick / 24}日] {ev.Kind}: {ev.Message}");
+if (profile)
+    foreach (var kv in runner.ProfileMs.OrderByDescending(kv => kv.Value))
+        Console.WriteLine($"  {kv.Key,-12} {kv.Value / days,8:0.000} ms/day");
 if (companies)
 {
     foreach (var g in world.Economy.Companies.Values.GroupBy(c => c.Def.Id))

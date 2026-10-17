@@ -46,21 +46,14 @@ namespace WorldSim.Core.Bootstrap
         public static SimulationRunner CreateRunner(WorldState world)
         {
             var runner = new SimulationRunner(world);
-            runner.AddSystem(new WeatherSystem());
-            runner.AddSystem(new DisasterSystem());
-            runner.AddSystem(new LaborSystem());
-            runner.AddSystem(new EnergySystem());
-            runner.AddSystem(new ResearchSystem());
-            runner.AddSystem(new ProductionSystem());
-            runner.AddSystem(new LogisticsSystem());
-            runner.AddSystem(new RetailSystem());
-            runner.AddSystem(new FinanceSystem());
-            runner.AddSystem(new PopulationSystem());
-            runner.AddSystem(new MarketSystem());
-            runner.AddSystem(new TrafficSystem());
-            runner.AddSystem(new PollutionSystem());
-            runner.AddSystem(new RepairSystem());
-            runner.AddSystem(new StatsHistorySystem());
+            ISimulationSystem[] daily =
+            {
+                new WeatherSystem(), new DisasterSystem(), new LaborSystem(), new EnergySystem(), new ResearchSystem(),
+                new ProductionSystem(), new LogisticsSystem(), new RetailSystem(), new FinanceSystem(), new PopulationSystem(),
+                new MarketSystem(), new TrafficSystem(), new PollutionSystem(), new RepairSystem(), new StatsHistorySystem(),
+            };
+            // One system per in-game hour (01:00 weather ... 15:00 statistics), in dependency order.
+            for (int i = 0; i < daily.Length; i++) runner.AddSystem(daily[i], i + 1);
             return runner;
         }
 

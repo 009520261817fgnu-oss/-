@@ -1,5 +1,6 @@
 # 本格的なゲームへの発展計画（2026-10-17）
 
+> **この文書は置き換え済みです。** 現在の計画は [VISION_PLAN.md](VISION_PLAN.md) と [S5_PLAN.md](S5_PLAN.md) です。以下は記録として残しています。
 > **2026-10-17 更新**：最上位目標の再定義（質で超える）を受けて、段階を [VISION_PLAN.md](VISION_PLAN.md) の S1〜S10 に並べ直しました。本書の F1（人生体験 第1段階）は完了しています。F2以降は VISION_PLAN.md の対応表を参照してください。
 
 前提：[AUDIT.md](AUDIT.md) の監査結果。人生体験モードの詳細は [LIFE_MODE.md](LIFE_MODE.md)。

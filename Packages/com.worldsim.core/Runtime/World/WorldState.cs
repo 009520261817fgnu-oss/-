@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using WorldSim.Core.Content;
+using WorldSim.Core.Economy;
+using WorldSim.Core.Environment;
 using WorldSim.Core.Simulation;
+using WorldSim.Core.Transport;
 
 namespace WorldSim.Core.World
 {
@@ -12,13 +15,15 @@ namespace WorldSim.Core.World
     /// </summary>
     public sealed class WorldState
     {
-        public const int FormatVersion = 1;
+        public const int FormatVersion = 2;
+        public const int MaxEvents = 300;
         /// <summary>Largest height difference allowed inside a single road cell, in metres.</summary>
         public const float RoadMaxSlope = 3.5f;
 
         private readonly SortedDictionary<int, Building> _buildings = new SortedDictionary<int, Building>();
         private readonly int[] _occupant; // building id per cell, 0 = none
         private readonly bool[] _road;
+        private readonly bool[] _roadDamaged;
         private readonly byte[] _vegetation;
         private int _roadCellCount;
 
@@ -28,6 +33,22 @@ namespace WorldSim.Core.World
         public SimClock Clock { get; } = new SimClock();
         public DeterministicRandom Random { get; }
         public int NextId { get; private set; } = 1;
+
+        public EconomyState Economy { get; } = new EconomyState();
+        public EnvironmentState Environment { get; }
+        /// <summary>Derived road graph cache (not saved).</summary>
+        public RoadNetwork Network { get; }
+        public TechEffects Effects { get; }
+        /// <summary>Vehicles per day on each cell yesterday (commuters, shoppers, freight).</summary>
+        public float[] TrafficVolume { get; }
+        public List<WorldEvent> Events { get; } = new List<WorldEvent>();
+        /// <summary>Trips generated today (transient; turned into TrafficVolume at day end).</summary>
+        public List<Trip> Trips { get; } = new List<Trip>();
+        public List<StatsSnapshot> History { get; } = new List<StatsSnapshot>();
+        /// <summary>When false (world generation), construction is free.</summary>
+        public bool ChargeConstruction { get; set; } = true;
+        /// <summary>Change counters per <see cref="WorldChangeKind"/> so views can poll for updates.</summary>
+        public int[] Versions { get; } = new int[Enum.GetValues(typeof(WorldChangeKind)).Length];
 
         public event Action<WorldChange> Changed;
 
@@ -40,8 +61,23 @@ namespace WorldSim.Core.World
             int cells = terrain.Width * terrain.Depth;
             _occupant = new int[cells];
             _road = new bool[cells];
+            _roadDamaged = new bool[cells];
+            TrafficVolume = new float[cells];
             _vegetation = vegetation ?? new byte[cells];
             if (_vegetation.Length != cells) throw new ArgumentException("Vegetation size mismatch", nameof(vegetation));
+            Environment = new EnvironmentState(terrain.Width, terrain.Depth);
+            Network = new RoadNetwork(this);
+            Effects = new TechEffects(this);
+            Economy.Market.Init(content);
+            Economy.Ledger.Transfer(Economy.External, Economy.City, EconomyState.CityStartFunds, Flow.Investment);
+        }
+
+        public int AllocateId() => NextId++;
+
+        public void Log(string kind, string message)
+        {
+            Events.Add(new WorldEvent { Tick = Clock.Tick, Kind = kind, Message = message });
+            if (Events.Count > MaxEvents) Events.RemoveRange(0, Events.Count - MaxEvents);
         }
 
         public int Width => Terrain.Width;
@@ -60,6 +96,33 @@ namespace WorldSim.Core.World
         public bool HasRoad(GridPos c) => Terrain.InBounds(c) && _road[Index(c)];
         public bool IsOccupied(GridPos c) => _occupant[Index(c)] != 0 || _road[Index(c)];
         public byte GetVegetation(GridPos c) => _vegetation[Index(c)];
+        public bool IsRoadDamaged(GridPos c) => Terrain.InBounds(c) && _roadDamaged[Index(c)];
+        /// <summary>Road exists and is not damaged (damaged roads are impassable until repaired).</summary>
+        public bool IsRoadUsable(GridPos c) => Terrain.InBounds(c) && _road[Index(c)] && !_roadDamaged[Index(c)];
+
+        public void SetVegetation(GridPos c, byte value)
+        {
+            if (_vegetation[Index(c)] == value) return;
+            _vegetation[Index(c)] = value;
+            Raise(WorldChangeKind.Vegetation, GridRect.FromSize(c, 1, 1));
+        }
+
+        public void SetRoadDamaged(GridPos c, bool damaged)
+        {
+            if (!HasRoad(c) || _roadDamaged[Index(c)] == damaged) return;
+            _roadDamaged[Index(c)] = damaged;
+            Network.Invalidate();
+            Raise(WorldChangeKind.Roads, GridRect.FromSize(c, 1, 1));
+        }
+
+        /// <summary>Sets a building's structural condition (0..1) and notifies views.</summary>
+        public void SetCondition(Building b, float condition)
+        {
+            float v = Math.Max(0f, Math.Min(1f, condition));
+            if (v == b.Condition) return;
+            b.Condition = v;
+            Raise(WorldChangeKind.Buildings, b.Footprint);
+        }
 
         /// <summary>True when any cell orthogonally adjacent to the footprint is a road.</summary>
         public bool HasRoadAccess(GridRect r)
@@ -75,6 +138,8 @@ namespace WorldSim.Core.World
 
         public CommandResult CanPlaceBuilding(BuildingDef def, GridPos origin)
         {
+            if (def.RequiresTech != null && !Effects.IsResearched(def.RequiresTech))
+                return CommandResult.Fail($"技術「{Content.GetTech(def.RequiresTech).Name}」が未研究です");
             GridRect r = GridRect.FromSize(origin, def.Width, def.Depth);
             if (r.MinX < 0 || r.MinZ < 0 || r.MaxX > Width || r.MaxZ > Depth) return CommandResult.Fail("範囲外です");
             for (int z = r.MinZ; z < r.MaxZ; z++)
@@ -94,6 +159,11 @@ namespace WorldSim.Core.World
             if (!Content.TryGetBuilding(defId, out BuildingDef def)) return CommandResult.Fail($"未定義の建物 '{defId}'");
             CommandResult check = CanPlaceBuilding(def, origin);
             if (!check.Success) return check;
+            if (ChargeConstruction)
+            {
+                if (Economy.City.Cash < def.Cost) return CommandResult.Fail($"予算不足です（必要 {def.Cost / 10000:N0}万円）");
+                Economy.Ledger.Transfer(Economy.City, Economy.External, def.Cost, Flow.Construction);
+            }
 
             GridRect r = GridRect.FromSize(origin, def.Width, def.Depth);
             Terrain.HeightRange(r, out _, out float max);
@@ -107,6 +177,7 @@ namespace WorldSim.Core.World
                 _occupant[i] = b.Id;
                 if (_vegetation[i] != 0) { _vegetation[i] = 0; clearedVegetation = true; }
             }
+            OnBuildingAdded(b);
             Raise(WorldChangeKind.Buildings, r);
             if (clearedVegetation) Raise(WorldChangeKind.Vegetation, r);
             return CommandResult.Ok(def.Name + "を建設しました", b.Id);
@@ -120,6 +191,7 @@ namespace WorldSim.Core.World
             for (int x = r.MinX; x < r.MaxX; x++)
                 _occupant[Index(new GridPos(x, z))] = 0;
             _buildings.Remove(id);
+            OnBuildingRemoved(b);
             Raise(WorldChangeKind.Buildings, r);
             return CommandResult.Ok(b.Def.Name + "を撤去しました");
         }
@@ -142,17 +214,34 @@ namespace WorldSim.Core.World
         /// Builds road along <see cref="RoadPath"/>. Atomic: if any new cell is invalid nothing is built.
         /// Cells that already have road are kept, so paths may cross or extend existing roads.
         /// </summary>
+        public bool CanBuildRoad(GridPos from, GridPos to) => CheckRoad(RoadPath(from, to)) == null;
+
+        private string CheckRoad(List<GridPos> path)
+        {
+            foreach (GridPos c in path)
+            {
+                if (!Terrain.InBounds(c)) return "範囲外です";
+                if (_road[Index(c)]) continue;
+                if (_occupant[Index(c)] != 0) return $"{c} に建物があります";
+                if (Terrain.IsCellUnderwater(c)) return $"{c} は水面です（橋は未実装）";
+                if (Terrain.CellMaxHeight(c) - Terrain.CellMinHeight(c) > RoadMaxSlope) return $"{c} の傾斜が大きすぎます";
+            }
+            return null;
+        }
+
         public CommandResult TryBuildRoad(GridPos from, GridPos to)
         {
             List<GridPos> path = RoadPath(from, to);
-            foreach (GridPos c in path)
+            string error = CheckRoad(path);
+            if (error != null) return CommandResult.Fail(error);
+
+            int newCells = 0;
+            foreach (GridPos c in path) if (!_road[Index(c)]) newCells++;
+            long cost = newCells * EconomyState.RoadCostPerCell;
+            if (ChargeConstruction && newCells > 0)
             {
-                if (!Terrain.InBounds(c)) return CommandResult.Fail("範囲外です");
-                if (_road[Index(c)]) continue;
-                if (_occupant[Index(c)] != 0) return CommandResult.Fail($"{c} に建物があります");
-                if (Terrain.IsCellUnderwater(c)) return CommandResult.Fail($"{c} は水面です（橋は未実装）");
-                if (Terrain.CellMaxHeight(c) - Terrain.CellMinHeight(c) > RoadMaxSlope)
-                    return CommandResult.Fail($"{c} の傾斜が大きすぎます");
+                if (Economy.City.Cash < cost) return CommandResult.Fail($"予算不足です（必要 {cost / 10000:N0}万円）");
+                Economy.Ledger.Transfer(Economy.City, Economy.External, cost, Flow.Construction);
             }
 
             int added = 0;
@@ -169,6 +258,7 @@ namespace WorldSim.Core.World
             _roadCellCount += added;
             if (added > 0)
             {
+                Network.Invalidate();
                 Raise(WorldChangeKind.Roads, region);
                 Raise(WorldChangeKind.Vegetation, region);
             }
@@ -179,7 +269,9 @@ namespace WorldSim.Core.World
         {
             if (!HasRoad(c)) return CommandResult.Fail("道路がありません");
             _road[Index(c)] = false;
+            _roadDamaged[Index(c)] = false;
             _roadCellCount--;
+            Network.Invalidate();
             Raise(WorldChangeKind.Roads, GridRect.FromSize(c, 1, 1));
             return CommandResult.Ok("道路を撤去しました");
         }
@@ -193,6 +285,66 @@ namespace WorldSim.Core.World
             if (HasRoad(c)) return TryRemoveRoad(c);
             return CommandResult.Fail("撤去する対象がありません");
         }
+
+        private void OnBuildingAdded(Building b)
+        {
+            Network.InvalidateBuilding(b.Id);
+            BuildingDef def = b.Def;
+            if (def.Jobs <= 0) return;
+            var co = new Company
+            {
+                BuildingId = b.Id,
+                Def = def,
+                Recipe = def.Recipe != null ? Content.GetRecipe(def.Recipe) : null,
+                IsPublic = def.IsPublic,
+                // New businesses open 10% above the going rate to staff up; essential services add a premium.
+                Wage = (long)((ChargeConstruction ? Economy.AverageWage() * 1.1 : EconomyState.BaseWage) * def.GetParam("wagePremium", 1.0)),
+                TargetWorkers = def.Jobs,
+            };
+            Economy.Companies.Add(b.Id, co);
+            if (!co.IsPublic) Economy.Ledger.Transfer(Economy.External, co, EconomyState.CompanyStartCapital, Flow.Investment);
+        }
+
+        private void OnBuildingRemoved(Building b)
+        {
+            Network.InvalidateBuilding(b.Id);
+            EconomyState e = Economy;
+            if (e.Companies.TryGetValue(b.Id, out Company co))
+            {
+                foreach (int cid in co.Workers.ToArray())
+                    if (e.Citizens.TryGetValue(cid, out Citizen c)) e.Fire(c);
+                e.Ledger.Transfer(co, e.External, co.Cash, Flow.Divestment);
+                e.Companies.Remove(b.Id);
+            }
+            if (e.Residents(b.Id) > 0)
+                foreach (Citizen c in e.Citizens.Values)
+                    if (c.HomeId == b.Id) e.MoveIn(c, 0);
+            e.Occupancy.Remove(b.Id);
+        }
+
+        // Used by persistence to rebuild a saved world exactly.
+        internal Building RestoreBuilding(int id, BuildingDef def, GridPos origin, float baseHeight, float condition)
+        {
+            var b = new Building(id, def, origin, baseHeight) { Condition = condition };
+            _buildings.Add(id, b);
+            GridRect r = b.Footprint;
+            for (int z = r.MinZ; z < r.MaxZ; z++)
+            for (int x = r.MinX; x < r.MaxX; x++)
+                _occupant[Index(new GridPos(x, z))] = id;
+            return b;
+        }
+
+        internal void RestoreRoad(int cellIndex, bool damaged)
+        {
+            if (!_road[cellIndex]) _roadCellCount++;
+            _road[cellIndex] = true;
+            _roadDamaged[cellIndex] = damaged;
+        }
+
+        internal void RestoreNextId(int nextId) => NextId = nextId;
+        internal bool[] RawRoads => _road;
+        internal bool[] RawRoadDamage => _roadDamaged;
+        internal byte[] RawVegetation => _vegetation;
 
         // ---------------------------------------------------------------- terrain editing
 
@@ -284,6 +436,7 @@ namespace WorldSim.Core.World
             h.Add(NextId);
             foreach (float v in Terrain.RawHeights) h.Add(v);
             foreach (bool r in _road) h.Add(r);
+            foreach (bool r in _roadDamaged) h.Add(r);
             foreach (byte v in _vegetation) h.Add((int)v);
             foreach (Building b in _buildings.Values)
             {
@@ -294,9 +447,32 @@ namespace WorldSim.Core.World
                 h.Add(b.BaseHeight);
                 h.Add(b.Condition);
             }
+            EconomyState e = Economy;
+            h.Add(e.City.Cash);
+            h.Add(e.External.Cash);
+            foreach (Citizen c in e.Citizens.Values)
+            {
+                h.Add(c.Id); h.Add(c.Cash); h.Add(c.HomeId); h.Add(c.JobId); h.Add(c.BirthDay);
+                h.Add(c.Education); h.Add(c.Happiness); h.Add(c.Retired);
+            }
+            foreach (Company c in e.Companies.Values)
+            {
+                h.Add(c.BuildingId); h.Add(c.Cash); h.Add(c.Wage); h.Add(c.Workers.Count); h.Add(c.Closed);
+                foreach (var kv in c.Inventory) { h.Add(kv.Key); h.Add(kv.Value); }
+                foreach (string t in c.AdoptedTechs) h.Add(t);
+            }
+            foreach (var kv in e.Market.Price) { h.Add(kv.Key); h.Add(kv.Value); }
+            foreach (string t in e.City.Research.Completed) h.Add(t);
+            h.Add(e.City.Research.Progress);
+            h.Add(Environment.SoilMoisture);
+            foreach (float p in Environment.Pollution) h.Add(p);
             return h.Value;
         }
 
-        private void Raise(WorldChangeKind kind, GridRect region) => Changed?.Invoke(new WorldChange(kind, region));
+        private void Raise(WorldChangeKind kind, GridRect region)
+        {
+            Versions[(int)kind]++;
+            Changed?.Invoke(new WorldChange(kind, region));
+        }
     }
 }

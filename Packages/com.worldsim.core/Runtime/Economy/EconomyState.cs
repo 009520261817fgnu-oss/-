@@ -1,0 +1,194 @@
+using System;
+using System.Collections.Generic;
+using WorldSim.Core.Content;
+
+namespace WorldSim.Core.Economy
+{
+    /// <summary>City-wide policy levers (spec 3.3 政治). Changed through SetPolicyCommand.</summary>
+    public sealed class Policy
+    {
+        public double IncomeTax = 0.20;
+        public double CorporateTax = 0.20;
+        /// <summary>Yen per industrial/agricultural worker per day paid to companies.</summary>
+        public long IndustrySubsidyPerWorker;
+        /// <summary>Yen per day invested in disaster preparedness (levees, drills, retrofits).</summary>
+        public long PreparednessBudget;
+        /// <summary>Maximum yen per day spent on repairing damage.</summary>
+        public long RepairBudget = 5_000_000;
+        public long PensionPerDay = 1500;
+        /// <summary>Yen per kWh paid by consumers to power companies.</summary>
+        public double ElectricityPrice = 25;
+
+        public static readonly string[] Keys =
+            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "electricityPrice" };
+
+        public double Get(string key)
+        {
+            switch (key)
+            {
+                case "incomeTax": return IncomeTax;
+                case "corporateTax": return CorporateTax;
+                case "industrySubsidy": return IndustrySubsidyPerWorker;
+                case "preparedness": return PreparednessBudget;
+                case "repairBudget": return RepairBudget;
+                case "pension": return PensionPerDay;
+                case "electricityPrice": return ElectricityPrice;
+                default: throw new ArgumentException($"Unknown policy '{key}'");
+            }
+        }
+
+        /// <summary>Returns null on success, or an error message when out of range.</summary>
+        public string Set(string key, double v)
+        {
+            if (double.IsNaN(v) || double.IsInfinity(v)) return "値が不正です";
+            switch (key)
+            {
+                case "incomeTax": if (v < 0 || v > 0.5) return "所得税率は0〜50%"; IncomeTax = v; return null;
+                case "corporateTax": if (v < 0 || v > 0.6) return "法人税率は0〜60%"; CorporateTax = v; return null;
+                case "industrySubsidy": if (v < 0 || v > 20000) return "産業補助は0〜20,000円/人日"; IndustrySubsidyPerWorker = (long)v; return null;
+                case "preparedness": if (v < 0 || v > 20_000_000) return "防災投資は0〜2,000万円/日"; PreparednessBudget = (long)v; return null;
+                case "repairBudget": if (v < 0 || v > 50_000_000) return "復旧予算は0〜5,000万円/日"; RepairBudget = (long)v; return null;
+                case "pension": if (v < 0 || v > 20000) return "年金は0〜20,000円/日"; PensionPerDay = (long)v; return null;
+                case "electricityPrice": if (v < 5 || v > 100) return "電気料金は5〜100円/kWh"; ElectricityPrice = v; return null;
+                default: return $"未知の政策 '{key}'";
+            }
+        }
+    }
+
+    public sealed class ResearchState
+    {
+        public readonly SortedSet<string> Completed = new SortedSet<string>(StringComparer.Ordinal);
+        /// <summary>Tech being researched, or null (the lab then picks the cheapest available).</summary>
+        public string Current;
+        public double Progress;
+        public double PointsYesterday;
+    }
+
+    public sealed class City : Account
+    {
+        public readonly Policy Policy = new Policy();
+        public readonly ResearchState Research = new ResearchState();
+        /// <summary>Cumulative preparedness investment (depreciates slowly).</summary>
+        public double PreparednessStock;
+    }
+
+    /// <summary>Local wholesale prices and yesterday's trade volumes per resource.</summary>
+    public sealed class Market
+    {
+        public readonly SortedDictionary<string, double> Price = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly SortedDictionary<string, double> Produced = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly SortedDictionary<string, double> LocalTraded = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly SortedDictionary<string, double> Imported = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly SortedDictionary<string, double> Exported = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly SortedDictionary<string, double> Unmet = new SortedDictionary<string, double>(StringComparer.Ordinal);
+
+        public void Init(ContentDatabase content)
+        {
+            foreach (ResourceDef r in content.Resources)
+                if (!Price.ContainsKey(r.Id)) Price[r.Id] = r.BasePrice;
+        }
+
+        public double GetPrice(string res) => Price.TryGetValue(res, out double p) ? p : 0;
+
+        public static void Add(SortedDictionary<string, double> d, string key, double v) =>
+            d[key] = (d.TryGetValue(key, out double cur) ? cur : 0) + v;
+
+        public void ClearDaily()
+        {
+            Produced.Clear();
+            LocalTraded.Clear();
+            Imported.Clear();
+            Exported.Clear();
+            Unmet.Clear();
+        }
+    }
+
+    public sealed class WorldEvent
+    {
+        public long Tick;
+        public string Kind;
+        public string Message;
+    }
+
+    /// <summary>Demographic event counts for the current day (transient, read by statistics).</summary>
+    public sealed class DailyCounters
+    {
+        public int Births, Deaths, Immigrants, Emigrants, Moves;
+        public void Clear() { Births = Deaths = Immigrants = Emigrants = Moves = 0; }
+    }
+
+    /// <summary>All social and economic play state. Systems are stateless and operate on this.</summary>
+    public sealed class EconomyState
+    {
+        public const long BaseWage = 8000;
+        public const long CompanyStartCapital = 5_000_000;
+        public const long CityStartFunds = 300_000_000;
+        public const long RoadCostPerCell = 50_000;
+
+        public readonly SortedDictionary<int, Citizen> Citizens = new SortedDictionary<int, Citizen>();
+        /// <summary>Employers keyed by building id.</summary>
+        public readonly SortedDictionary<int, Company> Companies = new SortedDictionary<int, Company>();
+        /// <summary>Residents per residential building id.</summary>
+        public readonly SortedDictionary<int, int> Occupancy = new SortedDictionary<int, int>();
+        public readonly City City = new City();
+        public readonly ExternalAccount External = new ExternalAccount();
+        public readonly Market Market = new Market();
+        public readonly Ledger Ledger = new Ledger();
+        public readonly DailyCounters Daily = new DailyCounters();
+
+        public int Population => Citizens.Count;
+
+        public bool TryGetCompany(int buildingId, out Company c) => Companies.TryGetValue(buildingId, out c);
+
+        /// <summary>Mean wage offered by open employers (the going rate a new business must match).</summary>
+        public long AverageWage()
+        {
+            long sum = 0;
+            int n = 0;
+            foreach (Company c in Companies.Values)
+                if (!c.Closed) { sum += c.Wage; n++; }
+            return n == 0 ? BaseWage : sum / n;
+        }
+
+        public int Residents(int buildingId) => Occupancy.TryGetValue(buildingId, out int n) ? n : 0;
+
+        /// <summary>Sum of all money including the external world. Constant unless there is a bug.</summary>
+        public long TotalMoney()
+        {
+            long sum = City.Cash + External.Cash;
+            foreach (Citizen c in Citizens.Values) sum += c.Cash;
+            foreach (Company c in Companies.Values) sum += c.Cash;
+            return sum;
+        }
+
+        public void MoveIn(Citizen c, int homeId)
+        {
+            if (c.HomeId != 0) Occupancy[c.HomeId] = Residents(c.HomeId) - 1;
+            c.HomeId = homeId;
+            if (homeId != 0) Occupancy[homeId] = Residents(homeId) + 1;
+        }
+
+        public void Hire(Company co, Citizen c)
+        {
+            if (c.JobId != 0) Fire(c);
+            co.Workers.Add(c.Id);
+            c.JobId = co.BuildingId;
+            c.UnemployedDays = 0;
+        }
+
+        public void Fire(Citizen c)
+        {
+            if (c.JobId != 0 && Companies.TryGetValue(c.JobId, out Company co)) co.Workers.Remove(c.Id);
+            c.JobId = 0;
+        }
+
+        /// <summary>Removes a citizen from the world; savings go to <paramref name="heir"/>.</summary>
+        public void RemoveCitizen(Citizen c, Account heir, Flow flow)
+        {
+            Fire(c);
+            MoveIn(c, 0);
+            Ledger.Transfer(c, heir, c.Cash, flow);
+            Citizens.Remove(c.Id);
+        }
+    }
+}

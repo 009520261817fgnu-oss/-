@@ -92,14 +92,13 @@ namespace WorldSim.Core.Tests
         {
             WorldState w = TestContent.FlatWorld();
             SimulationRunner runner = WorldFactory.CreateRunner(w);
-            var stats = runner.GetSystem<StatsHistorySystem>();
             runner.StepMany(24);
             w.TryPlaceBuilding("factory", new GridPos(2, 2));
             runner.StepMany(24);
-            Assert.AreEqual(2, stats.History.Count);
-            Assert.AreEqual(0, stats.History[0].Buildings);
-            Assert.AreEqual(1, stats.History[1].Buildings);
-            Assert.AreEqual(1, stats.History[1].ByCategory[BuildingCategory.Industrial]);
+            Assert.AreEqual(2, w.History.Count);
+            Assert.AreEqual(0, w.History[0].Buildings);
+            Assert.AreEqual(1, w.History[1].Buildings);
+            Assert.AreEqual(1, w.History[1].ByCategory[BuildingCategory.Industrial]);
         }
     }
 

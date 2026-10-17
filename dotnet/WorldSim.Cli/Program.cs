@@ -15,6 +15,7 @@ ulong seed = 1;
 int days = 7;
 string png = null;
 bool demoEdits = false;
+bool companies = false;
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -23,6 +24,7 @@ for (int i = 0; i < args.Length; i++)
         case "--days": days = int.Parse(args[++i]); break;
         case "--png": png = args[++i]; break;
         case "--demo-edits": demoEdits = true; break;
+        case "--companies": companies = true; break;
         default: Console.Error.WriteLine($"unknown argument {args[i]}"); return 2;
     }
 }
@@ -58,9 +60,21 @@ sw.Restart();
 runner.StepMany(days * SimClock.TicksPerDay);
 double simMs = sw.Elapsed.TotalMilliseconds;
 Console.WriteLine($"Ran {days} days ({days * SimClock.TicksPerDay} ticks) in {simMs:0.0} ms -> clock {world.Clock}");
-var history = runner.GetSystem<StatsHistorySystem>().History;
+var history = world.History;
 Console.WriteLine($"Daily snapshots recorded: {history.Count}");
-PrintStats(history.Count > 0 ? history[history.Count - 1] : StatsHistorySystem.Capture(world));
+int every = Math.Max(1, history.Count / 12);
+for (int i = every - 1; i < history.Count; i += every) PrintStats(history[i]);
+foreach (var ev in world.Events.TakeLast(15)) Console.WriteLine($"  [{ev.Tick / 24}日] {ev.Kind}: {ev.Message}");
+if (companies)
+{
+    foreach (var g in world.Economy.Companies.Values.GroupBy(c => c.Def.Id))
+    {
+        var list = g.ToList();
+        Console.WriteLine($"  {g.Key,-12} n={list.Count,2} open={list.Count(c => !c.Closed),2} workers={list.Sum(c => c.Workers.Count),4}/{list.Sum(c => c.Def.Jobs),4} " +
+            $"target={list.Sum(c => c.TargetWorkers),4} profitAvg={list.Average(c => c.ProfitAvg),9:0} cash={list.Average(c => (double)c.Cash) / 1e6,6:0.0}M wage={list.Average(c => (double)c.Wage),5:0} " +
+            $"shortage={list.Count(c => c.InputShortage)} stock: " + string.Join(",", list.SelectMany(c => c.Inventory).GroupBy(kv => kv.Key).Select(x => $"{x.Key}={x.Sum(kv => kv.Value):0}")));
+    }
+}
 Console.WriteLine($"State hash: {world.ComputeHash():X16}");
 
 if (png != null)
@@ -72,6 +86,12 @@ return 0;
 
 static void PrintStats(StatsSnapshot s)
 {
-    Console.WriteLine($"  buildings={s.Buildings} roadCells={s.RoadCells} " +
-        string.Join(" ", s.ByCategory.OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value}")));
+    Console.WriteLine($"  day={s.Tick / 24} buildings={s.Buildings} roads={s.RoadCells} pop={s.Population} labour={s.LabourForce} employed={s.Employed} " +
+        $"unemp={s.UnemploymentRate:P1} jobs={s.Jobs} vac={s.Vacancies} happy={s.AvgHappiness:0.00} commute={s.AvgCommuteHours * 60:0.0}min");
+    Console.WriteLine($"    treasury={s.Treasury / 1e6:0.0}M companies={s.CompaniesOpen}/{s.CompaniesClosed}closed cash={s.CompanyCash / 1e6:0.0}M hh={s.HouseholdCash / 1e6:0.0}M " +
+        $"wage={s.AvgWage:0} wages={s.Wages / 1e6:0.00}M retail={s.RetailSales / 1e6:0.00}M imp={s.Imports / 1e6:0.00}M exp={s.Exports / 1e6:0.00}M tax={s.Taxes / 1e6:0.00}M profit={s.CompanyProfit / 1e6:0.00}M");
+    Console.WriteLine($"    prod: " + string.Join(" ", s.Production.Select(kv => $"{kv.Key}={kv.Value:0}")) +
+        " | price: " + string.Join(" ", s.Prices.Select(kv => $"{kv.Key}={kv.Value:0}")));
+    Console.WriteLine($"    energy={s.EnergySupply:0}/{s.EnergyDemand:0} pollution={s.AvgPollution:0.0} temp={s.Temperature:0.0} traffic={s.TrafficTotal:0} congested={s.CongestedCells} " +
+        $"research={s.ResearchPoints:0.0} techs={s.TechsCompleted} damaged={s.DamagedBuildings}/{s.DamagedRoads} births={s.Births} deaths={s.Deaths} in={s.Immigrants} out={s.Emigrants} totalMoney={s.TotalMoney}");
 }

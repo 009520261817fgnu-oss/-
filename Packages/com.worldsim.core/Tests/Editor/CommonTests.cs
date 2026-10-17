@@ -82,7 +82,8 @@ namespace WorldSim.Core.Tests
             BuildingDef factory = db.GetBuilding("factory");
             Assert.AreEqual(BuildingCategory.Industrial, factory.Category);
             Assert.AreEqual(4, factory.Width);
-            Assert.AreEqual(40, factory.GetParam("jobs"));
+            Assert.AreEqual(30, factory.Jobs);
+            Assert.AreEqual("make_goods", factory.Recipe);
             Assert.IsTrue(db.TryGetResource("steel", out ResourceDef steel));
             Assert.AreEqual(ResourceTier.Intermediate, steel.Tier);
             foreach (BuildingCategory c in Enum.GetValues(typeof(BuildingCategory)))

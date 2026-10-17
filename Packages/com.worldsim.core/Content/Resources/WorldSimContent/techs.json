@@ -1,0 +1,27 @@
+{
+  "techs": [
+    { "id": "mechanization", "name": "農業機械化", "cost": 1500, "adoptionCost": 1000000,
+      "description": "農場の生産性 +30%",
+      "effects": { "productivity:Agriculture": 0.3 } },
+    { "id": "efficient_motors", "name": "高効率モーター", "cost": 2000, "adoptionCost": 1500000,
+      "description": "工場・商業のエネルギー消費 -30%",
+      "effects": { "energy:Industrial": -0.3, "energy:Commercial": -0.3 } },
+    { "id": "automation", "name": "工場自動化", "cost": 3500, "adoptionCost": 4000000, "prereqs": ["efficient_motors"],
+      "description": "工業の生産性 +40%、必要人員 -30%、電力 +20%",
+      "effects": { "productivity:Industrial": 0.4, "jobs:Industrial": -0.3, "energy:Industrial": 0.2 } },
+    { "id": "scrubbers", "name": "排煙浄化装置", "cost": 2500, "adoptionCost": 2000000,
+      "description": "工業・発電所の汚染 -50%",
+      "effects": { "pollution:Industrial": -0.5, "pollution:Power": -0.5 } },
+    { "id": "solar_power", "name": "太陽光発電", "cost": 4000, "prereqs": ["efficient_motors"],
+      "description": "太陽光発電所を建設可能にする", "unlocks": ["solar_farm"] },
+    { "id": "traffic_signals", "name": "交通信号制御", "cost": 1750,
+      "description": "道路の走行速度 +30%（都市全体）",
+      "effects": { "roadSpeed": 0.3 } },
+    { "id": "logistics_software", "name": "物流管理システム", "cost": 2250,
+      "description": "輸送費 -30%（都市全体）",
+      "effects": { "transportCost": -0.3 } },
+    { "id": "seismic_design", "name": "耐震設計", "cost": 3000,
+      "description": "災害被害 -40%（都市全体）",
+      "effects": { "disasterResilience": 0.4 } }
+  ]
+}

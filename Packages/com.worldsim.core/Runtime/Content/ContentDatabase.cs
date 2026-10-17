@@ -6,37 +6,37 @@ namespace WorldSim.Core.Content
 {
     /// <summary>
     /// All static definitions, loaded from external JSON. Each JSON document may contain any of the
-    /// top-level arrays "buildings" and "resources"; later documents may add new ids but not redefine
-    /// existing ones (so a mod cannot silently replace base content).
+    /// top-level arrays "buildings", "resources", "recipes" and "techs"; later documents may add new
+    /// ids but not redefine existing ones (so a mod cannot silently replace base content).
+    /// Cross-references are checked by <see cref="Validate"/>.
     /// </summary>
     public sealed class ContentDatabase
     {
-        private readonly Dictionary<string, BuildingDef> _buildings = new Dictionary<string, BuildingDef>();
-        private readonly Dictionary<string, ResourceDef> _resources = new Dictionary<string, ResourceDef>();
-        private readonly List<string> _buildingOrder = new List<string>();
-        private readonly List<string> _resourceOrder = new List<string>();
+        private readonly Registry<BuildingDef> _buildings = new Registry<BuildingDef>("building", d => d.Id);
+        private readonly Registry<ResourceDef> _resources = new Registry<ResourceDef>("resource", d => d.Id);
+        private readonly Registry<RecipeDef> _recipes = new Registry<RecipeDef>("recipe", d => d.Id);
+        private readonly Registry<TechDef> _techs = new Registry<TechDef>("tech", d => d.Id);
 
-        public IEnumerable<BuildingDef> Buildings
-        {
-            get { foreach (string id in _buildingOrder) yield return _buildings[id]; }
-        }
+        public IEnumerable<BuildingDef> Buildings => _buildings.All;
+        public IEnumerable<ResourceDef> Resources => _resources.All;
+        public IEnumerable<RecipeDef> Recipes => _recipes.All;
+        public IEnumerable<TechDef> Techs => _techs.All;
 
-        public IEnumerable<ResourceDef> Resources
-        {
-            get { foreach (string id in _resourceOrder) yield return _resources[id]; }
-        }
+        public bool TryGetBuilding(string id, out BuildingDef def) => _buildings.TryGet(id, out def);
+        public BuildingDef GetBuilding(string id) => _buildings.Get(id);
+        public bool TryGetResource(string id, out ResourceDef def) => _resources.TryGet(id, out def);
+        public ResourceDef GetResource(string id) => _resources.Get(id);
+        public bool TryGetRecipe(string id, out RecipeDef def) => _recipes.TryGet(id, out def);
+        public RecipeDef GetRecipe(string id) => _recipes.Get(id);
+        public bool TryGetTech(string id, out TechDef def) => _techs.TryGet(id, out def);
+        public TechDef GetTech(string id) => _techs.Get(id);
 
-        public bool TryGetBuilding(string id, out BuildingDef def) => _buildings.TryGetValue(id, out def);
-
-        public BuildingDef GetBuilding(string id) =>
-            _buildings.TryGetValue(id, out BuildingDef def) ? def : throw new KeyNotFoundException($"Unknown building '{id}'");
-
-        public bool TryGetResource(string id, out ResourceDef def) => _resources.TryGetValue(id, out def);
-
+        /// <summary>Loads documents in order and validates cross-references.</summary>
         public static ContentDatabase FromJson(params string[] documents)
         {
             var db = new ContentDatabase();
             foreach (string doc in documents) db.LoadJson(doc);
+            db.Validate();
             return db;
         }
 
@@ -44,32 +44,52 @@ namespace WorldSim.Core.Content
         {
             if (!(Json.Parse(text) is IDictionary<string, object> root))
                 throw new FormatException("Content document must be a JSON object");
-
-            IList<object> buildings = root.GetArray("buildings");
-            if (buildings != null)
-                foreach (object item in buildings) AddBuilding(ParseBuilding(AsObject(item, "buildings")));
-
-            IList<object> resources = root.GetArray("resources");
-            if (resources != null)
-                foreach (object item in resources) AddResource(ParseResource(AsObject(item, "resources")));
+            foreach (var o in Items(root, "resources")) _resources.Add(ParseResource(o));
+            foreach (var o in Items(root, "recipes")) _recipes.Add(ParseRecipe(o));
+            foreach (var o in Items(root, "buildings")) _buildings.Add(ParseBuilding(o));
+            foreach (var o in Items(root, "techs")) _techs.Add(ParseTech(o));
         }
 
-        public void AddBuilding(BuildingDef def)
+        public void AddBuilding(BuildingDef def) => _buildings.Add(def);
+        public void AddResource(ResourceDef def) => _resources.Add(def);
+
+        /// <summary>Throws FormatException if any definition refers to an undefined id.</summary>
+        public void Validate()
         {
-            if (_buildings.ContainsKey(def.Id)) throw new FormatException($"Duplicate building id '{def.Id}'");
-            _buildings.Add(def.Id, def);
-            _buildingOrder.Add(def.Id);
+            foreach (RecipeDef r in _recipes.All)
+            {
+                foreach (string res in r.Inputs.Keys) RequireResource(res, $"recipe '{r.Id}'");
+                foreach (string res in r.Outputs.Keys) RequireResource(res, $"recipe '{r.Id}'");
+            }
+            foreach (BuildingDef b in _buildings.All)
+            {
+                if (b.Recipe != null && !_recipes.TryGet(b.Recipe, out _))
+                    throw new FormatException($"building '{b.Id}': unknown recipe '{b.Recipe}'");
+                foreach (string res in b.Sells) RequireResource(res, $"building '{b.Id}'");
+                if (b.RequiresTech != null && !_techs.TryGet(b.RequiresTech, out _))
+                    throw new FormatException($"building '{b.Id}': unknown tech '{b.RequiresTech}'");
+            }
+            foreach (TechDef t in _techs.All)
+            {
+                foreach (string p in t.Prereqs)
+                    if (!_techs.TryGet(p, out _)) throw new FormatException($"tech '{t.Id}': unknown prereq '{p}'");
+                foreach (string u in t.Unlocks)
+                    if (!_buildings.TryGet(u, out _)) throw new FormatException($"tech '{t.Id}': unknown building '{u}'");
+            }
         }
 
-        public void AddResource(ResourceDef def)
+        private void RequireResource(string id, string ctx)
         {
-            if (_resources.ContainsKey(def.Id)) throw new FormatException($"Duplicate resource id '{def.Id}'");
-            _resources.Add(def.Id, def);
-            _resourceOrder.Add(def.Id);
+            if (!_resources.TryGet(id, out _)) throw new FormatException($"{ctx}: unknown resource '{id}'");
         }
 
-        private static IDictionary<string, object> AsObject(object item, string context) =>
-            item as IDictionary<string, object> ?? throw new FormatException($"{context}: entries must be objects");
+        private static IEnumerable<IDictionary<string, object>> Items(IDictionary<string, object> root, string key)
+        {
+            IList<object> list = root.GetArray(key);
+            if (list == null) yield break;
+            foreach (object item in list)
+                yield return item as IDictionary<string, object> ?? throw new FormatException($"{key}: entries must be objects");
+        }
 
         private static BuildingDef ParseBuilding(IDictionary<string, object> o)
         {
@@ -85,29 +105,79 @@ namespace WorldSim.Core.Content
                 Height = (float)o.GetDouble("height", 4),
                 MaxSlope = (float)o.GetDouble("maxSlope", 2.5),
                 Color = ParseColor(o.GetString("color", "#CCCCCC"), ctx),
+                Cost = (long)o.GetDouble("cost", 0),
+                Recipe = o.GetString("recipe"),
+                Sells = StringArray(o, "sells", ctx),
+                RequiresTech = o.GetString("requiresTech"),
             };
             if (def.Width < 1 || def.Depth < 1 || def.Width > 32 || def.Depth > 32)
                 throw new FormatException($"{ctx}: footprint must be 1..32 cells");
             if (def.Height <= 0) throw new FormatException($"{ctx}: height must be positive");
-
-            IDictionary<string, object> ps = o.GetObject("params");
-            if (ps != null)
-                foreach (var kv in ps)
-                    if (kv.Value is double d) def.Params[kv.Key] = d;
-                    else throw new FormatException($"{ctx}: param '{kv.Key}' must be a number");
+            if (def.Cost < 0) throw new FormatException($"{ctx}: cost must not be negative");
+            ReadNumbers(o.GetObject("params"), def.Params, ctx);
             return def;
         }
 
         private static ResourceDef ParseResource(IDictionary<string, object> o)
         {
             string id = o.RequireString("id", "resource");
-            return new ResourceDef
+            var def = new ResourceDef
             {
                 Id = id,
                 Name = o.GetString("name", id),
                 Tier = EnumParse.Parse<ResourceTier>(o.GetString("tier"), $"resource '{id}'"),
                 Unit = o.GetString("unit", "t"),
+                BasePrice = o.GetDouble("price", 100),
             };
+            if (def.BasePrice <= 0) throw new FormatException($"resource '{id}': price must be positive");
+            return def;
+        }
+
+        private static RecipeDef ParseRecipe(IDictionary<string, object> o)
+        {
+            string id = o.RequireString("id", "recipe");
+            var def = new RecipeDef { Id = id };
+            ReadNumbers(o.GetObject("inputs"), def.Inputs, $"recipe '{id}'");
+            ReadNumbers(o.GetObject("outputs"), def.Outputs, $"recipe '{id}'");
+            if (def.Outputs.Count == 0) throw new FormatException($"recipe '{id}': needs at least one output");
+            return def;
+        }
+
+        private static TechDef ParseTech(IDictionary<string, object> o)
+        {
+            string id = o.RequireString("id", "tech");
+            string ctx = $"tech '{id}'";
+            var def = new TechDef
+            {
+                Id = id,
+                Name = o.GetString("name", id),
+                Description = o.GetString("description", ""),
+                Cost = o.GetDouble("cost", 100),
+                Prereqs = StringArray(o, "prereqs", ctx),
+                Unlocks = StringArray(o, "unlocks", ctx),
+                AdoptionCost = (long)o.GetDouble("adoptionCost", 0),
+            };
+            ReadNumbers(o.GetObject("effects"), def.Effects, ctx);
+            if (def.Cost <= 0) throw new FormatException($"{ctx}: cost must be positive");
+            return def;
+        }
+
+        private static void ReadNumbers(IDictionary<string, object> src, Dictionary<string, double> dst, string ctx)
+        {
+            if (src == null) return;
+            foreach (var kv in src)
+                if (kv.Value is double d) dst[kv.Key] = d;
+                else throw new FormatException($"{ctx}: '{kv.Key}' must be a number");
+        }
+
+        private static string[] StringArray(IDictionary<string, object> o, string key, string ctx)
+        {
+            IList<object> list = o.GetArray(key);
+            if (list == null) return Array.Empty<string>();
+            var result = new string[list.Count];
+            for (int i = 0; i < list.Count; i++)
+                result[i] = list[i] as string ?? throw new FormatException($"{ctx}: '{key}' must contain strings");
+            return result;
         }
 
         private static int ParseColor(string s, string ctx)
@@ -116,6 +186,27 @@ namespace WorldSim.Core.Content
                 int.TryParse(s.Substring(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int rgb))
                 return rgb;
             throw new FormatException($"{ctx}: color must be '#RRGGBB'");
+        }
+
+        private sealed class Registry<T> where T : class
+        {
+            private readonly string _kind;
+            private readonly Func<T, string> _id;
+            private readonly Dictionary<string, T> _byId = new Dictionary<string, T>();
+            private readonly List<T> _ordered = new List<T>();
+
+            public Registry(string kind, Func<T, string> id) { _kind = kind; _id = id; }
+            public IEnumerable<T> All => _ordered;
+            public bool TryGet(string id, out T def) => _byId.TryGetValue(id ?? "", out def);
+            public T Get(string id) => TryGet(id, out T d) ? d : throw new KeyNotFoundException($"Unknown {_kind} '{id}'");
+
+            public void Add(T def)
+            {
+                string id = _id(def);
+                if (_byId.ContainsKey(id)) throw new FormatException($"Duplicate {_kind} id '{id}'");
+                _byId.Add(id, def);
+                _ordered.Add(def);
+            }
         }
     }
 }

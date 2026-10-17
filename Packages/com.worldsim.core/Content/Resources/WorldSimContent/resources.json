@@ -1,10 +1,11 @@
 {
   "resources": [
-    { "id": "grain",    "name": "穀物",   "tier": "Raw" },
-    { "id": "wood",     "name": "木材",   "tier": "Raw" },
-    { "id": "iron_ore", "name": "鉄鉱石", "tier": "Raw" },
-    { "id": "steel",    "name": "鋼材",   "tier": "Intermediate" },
-    { "id": "food",     "name": "食品",   "tier": "Product" },
-    { "id": "tools",    "name": "工具",   "tier": "Product" }
+    { "id": "grain",    "name": "穀物",     "tier": "Raw",          "price": 100 },
+    { "id": "wood",     "name": "木材",     "tier": "Raw",          "price": 150 },
+    { "id": "iron_ore", "name": "鉄鉱石",   "tier": "Raw",          "price": 200 },
+    { "id": "steel",    "name": "鋼材",     "tier": "Intermediate", "price": 1000 },
+    { "id": "food",     "name": "食品",     "tier": "Product",      "price": 250 },
+    { "id": "goods",    "name": "工業製品", "tier": "Product",      "price": 1200, "unit": "個" },
+    { "id": "services", "name": "サービス", "tier": "Product",      "price": 150,  "unit": "件" }
   ]
 }

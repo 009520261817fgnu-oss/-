@@ -48,9 +48,9 @@ namespace WorldSim.Core.Bootstrap
             var runner = new SimulationRunner(world);
             runner.AddSystem(new WeatherSystem());
             runner.AddSystem(new DisasterSystem());
+            runner.AddSystem(new LaborSystem());
             runner.AddSystem(new EnergySystem());
             runner.AddSystem(new ResearchSystem());
-            runner.AddSystem(new LaborSystem());
             runner.AddSystem(new ProductionSystem());
             runner.AddSystem(new LogisticsSystem());
             runner.AddSystem(new RetailSystem());

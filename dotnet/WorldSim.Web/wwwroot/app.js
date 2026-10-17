@@ -44,7 +44,7 @@ const SERIES = {
   'prod.grain': ['穀物生産', ''], 'prod.iron_ore': ['鉄鉱石生産', ''], 'prod.wood': ['木材生産', ''], 'prod.steel': ['鋼材生産', ''],
   'prod.food': ['食品生産', ''], 'prod.goods': ['工業製品生産', ''], 'prod.services': ['サービス', ''],
 };
-const DAY = new THREE.Color(0x9fc2d9), NIGHT = new THREE.Color(0x0e1b24);
+const DAY = new THREE.Color(0x9fc2d9), NIGHT = new THREE.Color(0x4f6d8f);
 const LINE_COLORS = ['#e8893a', '#63bba3', '#7fa7c9', '#e3b341', '#c98fd1', '#e2625a', '#b5c46a', '#9fadb5'];
 
 const S = {
@@ -162,7 +162,7 @@ function initScene() {
   R.agents.geometry.setDrawRange(0, 0);
   scene.add(R.agents);
 
-  R.ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x63bba3, transparent: true, opacity: 0.45, depthWrite: false }));
+  R.ghost = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x63bba3, transparent: true, opacity: 0.7, depthWrite: false }));
   R.ghost.visible = false;
   scene.add(R.ghost);
   R.pathGhost = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x63bba3, transparent: true, opacity: 0.5, depthWrite: false }), 400);
@@ -500,7 +500,7 @@ function initPointer() {
     else if (e.button === 1) gesture = { kind: 'pan' };
     else if (look && (S.tool === 'inspect' || e.pointerType === 'touch')) gesture = { kind: 'look' };
     else if (S.tool === 'inspect') gesture = { kind: 'pan', maybeTap: true };
-    else gesture = { kind: 'tool', maybeTap: true };
+    else gesture = { kind: 'tool', maybeTap: true, touch: e.pointerType === 'touch', start: pick(e.clientX, e.clientY) };
     if (gesture.kind === 'tool' && ['raise', 'lower', 'flatten'].includes(S.tool)) startBrush(e);
   });
   el.addEventListener('pointermove', (e) => {
@@ -514,15 +514,18 @@ function initPointer() {
     if (gesture.kind === 'pan') Cam.pan(dx, dy);
     if (gesture.kind === 'rotate') { Cam.yaw -= dx * 0.006; Cam.pitch = Math.max(0.25, Math.min(1.5, Cam.pitch + dy * 0.005)); }
     if (gesture.kind === 'look') { Cam.lookYaw -= dx * 0.005; Cam.lookPitch = Math.max(-1.4, Math.min(1.4, Cam.lookPitch - dy * 0.005)); }
-    if (gesture.kind === 'tool') { hoverAt(e); if (brushTimer) lastBrush = pick(e.clientX, e.clientY) || lastBrush; }
+    if (gesture.kind === 'tool' && !gesture.maybeTap) dragTool(e);
   });
   const end = (e) => {
     const p = ptrs.get(e.pointerId);
     ptrs.delete(e.pointerId);
     stopBrush();
     if (!p || !gesture) { if (ptrs.size === 0) gesture = null; return; }
-    if (gesture.maybeTap && ptrs.size === 0 && performance.now() - p.t < 600) tap(e, p.type);
-    if (ptrs.size === 0) gesture = null;
+    if (ptrs.size === 0) {
+      if (gesture.maybeTap && performance.now() - p.t < 600) tap(e, p.type);
+      else if (gesture.kind === 'tool') endDrag(e);
+      gesture = null;
+    }
   };
   el.addEventListener('pointerup', end);
   el.addEventListener('pointercancel', end);
@@ -552,52 +555,34 @@ function movePinch() {
   Object.assign(gesture, { d, ang, mx, my });
 }
 
+/* Mouse hover: the ghost follows the cursor (touch has no hover; it uses taps and drags). */
 function hoverAt(e) {
-  if (e.pointerType === 'touch' && !ptrs.size) return;
+  if (e.pointerType === 'touch') return;
   const h = pick(e.clientX, e.clientY);
   if (!h || (S.hover && h.x === S.hover.x && h.z === S.hover.z)) return;
   S.hover = h;
-  if (!S.pending) updateGhost(h);
+  if (S.tool === 'build') placeBuild(h, false);
+  else if (S.tool === 'road') previewRoad(S.road?.a || h, h, !!S.road?.a);
+  else if (S.tool === 'bulldoze') targetBulldoze(h, false);
+  else updateGhost(h);
 }
 
-function originFor(def, cell) { return { x: cell.x - Math.floor((def.w - 1) / 2), z: cell.z - Math.floor((def.d - 1) / 2) }; }
+function dragTool(e) {
+  const c = pick(e.clientX, e.clientY);
+  if (!c) return;
+  if (brushTimer) { lastBrush = c; return; }
+  if (S.tool === 'build') placeBuild(c, false);
+  else if (S.tool === 'road' && gesture.start) previewRoad(gesture.start, c, true);
+  else if (S.tool === 'bulldoze') targetBulldoze(c, gesture.touch);
+}
 
-function updateGhost(cell) {
-  R.ghost.visible = false;
-  R.pathGhost.count = 0;
-  if (!cell) return;
-  const cs = S.meta.cellSize;
-  const box = (x, z, w, d, h, ok, warn) => {
-    const y = heightAt((x + w / 2) * cs, (z + d / 2) * cs);
-    R.ghost.position.set((x + w / 2) * cs, y + h / 2, (z + d / 2) * cs);
-    R.ghost.scale.set(w * cs, h, d * cs);
-    R.ghost.material.color.set(!ok ? 0xe2625a : warn ? 0xe3b341 : 0x63bba3);
-    R.ghost.visible = true;
-  };
-  if (S.tool === 'build' && S.buildDef) {
-    const def = S.defs[S.buildDef], o = originFor(def, cell);
-    const r = japi('CanPlace', def.id, o.x, o.z);
-    box(o.x, o.z, def.w, def.d, def.h, r.ok, r.warn);
-    S.ghostMsg = r.msg;
-  } else if (S.tool === 'road') {
-    const a = S.roadStart || cell;
-    const r = japi('RoadPreview', a.x, a.z, cell.x, cell.z);
-    R.pathGhost.material.color.set(r.ok ? 0x63bba3 : 0xe2625a);
-    const n = Math.min(400, r.cells.length / 2);
-    for (let i = 0; i < n; i++) {
-      const x = r.cells[i * 2], z = r.cells[i * 2 + 1];
-      _p.set((x + 0.5) * cs, heightAt((x + 0.5) * cs, (z + 0.5) * cs) + 0.8, (z + 0.5) * cs);
-      _s.set(cs * 0.9, 1.4, cs * 0.9);
-      _m.compose(_p, _q, _s);
-      R.pathGhost.setMatrixAt(i, _m);
-    }
-    R.pathGhost.count = n;
-    R.pathGhost.instanceMatrix.needsUpdate = true;
-    S.ghostMsg = S.roadStart ? `道路 ${n}マス・${yen(r.cost)}` : '始点を選んでください';
-  } else if (S.tool === 'bulldoze') {
-    box(cell.x, cell.z, 1, 1, 3, true, true);
-  } else if (['raise', 'lower', 'flatten'].includes(S.tool)) {
-    box(cell.vx - 3, cell.vz - 3, 6, 6, 1.5, true, S.tool !== 'raise');
+function endDrag(e) {
+  const c = pick(e.clientX, e.clientY);
+  if (!c) return;
+  if (S.tool === 'build') { placeBuild(c, gesture.touch); if (!gesture.touch) commitBuild(); }
+  else if (S.tool === 'road' && gesture.start) {
+    previewRoad(gesture.start, c, true);
+    if (!gesture.touch) commitRoad();
   }
 }
 
@@ -605,21 +590,25 @@ function tap(e, type) {
   const cell = pick(e.clientX, e.clientY);
   if (!cell) return;
   S.hover = cell;
-  if (S.tool === 'inspect') { inspectAt(cell); return; }
-  updateGhost(cell);
   const touch = type === 'touch';
-  if (S.tool === 'build' && S.buildDef) {
-    const def = S.defs[S.buildDef], o = originFor(def, cell);
-    const run = () => exec({ type: 'build', def: def.id, x: o.x, z: o.z });
-    touch ? askConfirm(`${def.name}を建設（${yen(def.cost)}）`, run, cell) : run();
+  if (S.tool === 'inspect') { inspectAt(cell); return; }
+  if (S.tool === 'build') {
+    if (!S.buildDef) { $('#drawer').hidden = false; toast('建てる建物を選んでください'); return; }
+    const p = S.place;
+    const onGhost = p && ((cell.x >= p.o.x && cell.x < p.o.x + p.def.w && cell.z >= p.o.z && cell.z < p.o.z + p.def.d)
+      || (p.src && p.src.x === cell.x && p.src.z === cell.z));
+    if (touch) { if (!onGhost) placeBuild(cell, true); return; } // touch: move the ghost, confirm with the bar
+    if (onGhost && p.r.ok) { commitBuild(); return; }           // mouse: clicking the (snapped) ghost builds it
+    placeBuild(cell, false);
+    if (S.place?.r.ok) commitBuild();
+    else { placeBuild(cell, true); if (S.place?.r.ok) toast('近くの建設できる場所に移しました。もう一度クリックで建設'); }
   } else if (S.tool === 'road') {
-    if (!S.roadStart) { S.roadStart = cell; updateGhost(cell); toast('終点を選んでください'); return; }
-    const a = S.roadStart;
-    const run = () => { const r = exec({ type: 'road', x1: a.x, z1: a.z, x2: cell.x, z2: cell.z }); if (r.ok) S.roadStart = null; };
-    touch ? askConfirm(S.ghostMsg || '道路を建設', run, cell) : run();
+    if (!S.road?.a || S.road.done) { previewRoad(cell, cell, false); toast('終点をタップ（またはドラッグで引く）'); return; }
+    previewRoad(S.road.a, cell, true);
+    if (!touch) commitRoad();
   } else if (S.tool === 'bulldoze') {
-    const run = () => exec({ type: 'bulldoze', x: cell.x, z: cell.z });
-    touch ? askConfirm('この場所の建物・道路を撤去', run, cell) : run();
+    targetBulldoze(cell, true);
+    if (!touch) commitBulldoze();
   }
 }
 
@@ -633,23 +622,160 @@ function startBrush(e) {
     if (!c) return;
     const cmd = S.tool === 'flatten' ? { type: 'flatten', x: c.vx, z: c.vz, r: 4, h: flattenHeight } : { type: 'raise', x: c.vx, z: c.vz, r: 3, d: S.tool === 'raise' ? 1.2 : -1.2 };
     exec(cmd, true);
+    updateGhost(c);
   };
   apply();
   brushTimer = setInterval(apply, 110);
 }
 function stopBrush() { if (brushTimer) clearInterval(brushTimer); brushTimer = 0; }
 
-function askConfirm(text, run, cell) {
-  S.pending = { run, cell };
-  $('#confirmText').textContent = text;
+/* ---- building placement ---- */
+
+function originFor(def, cell) { return { x: cell.x - Math.floor((def.w - 1) / 2), z: cell.z - Math.floor((def.d - 1) / 2) }; }
+
+function placeBuild(cell, snap) {
+  const def = S.defs[S.buildDef];
+  if (!def || !cell) return;
+  let o = originFor(def, cell);
+  let r = japi('CanPlace', def.id, o.x, o.z);
+  if (snap && (!r.ok || r.warn)) {
+    const near = snapNear(def, o);
+    if (near && (!r.ok || !near.r.warn)) ({ o, r } = near);
+  }
+  S.place = { def, o, r, src: { x: cell.x, z: cell.z } };
+  drawBox(o.x, o.z, def.w, def.d, def.h, r.ok, r.warn);
+  if (snap) revealGhost();
+  const status = r.ok ? (r.warn ? `⚠ ${r.msg}` : '✓ 建設できます') : snap ? `✕ 近くに空き地がありません（${r.msg}）。町の外側を選ぶか、先に撤去してください` : `✕ ${r.msg}`;
+  showBar(`<b>${esc(def.name)}</b> ${yen(def.cost)}<br><small class="${r.ok ? (r.warn ? 'warn' : 'good') : 'bad'}">${esc(status)}</small>`,
+    '建設', r.ok, commitBuild, true);
+}
+
+/** Nearest buildable origin (searched in C#), preferring spots that touch a road. */
+function snapNear(def, o) {
+  const f = japi('FindSpot', def.id, o.x, o.z, 20);
+  if (!f.found) return null;
+  return { o: { x: f.x, z: f.z }, r: japi('CanPlace', def.id, f.x, f.z) };
+}
+
+function commitBuild() {
+  const p = S.place;
+  if (!p || !p.r.ok) { toast(p ? p.r.msg : '場所を選んでください', true); return; }
+  const r = exec({ type: 'build', def: p.def.id, x: p.o.x, z: p.o.z });
+  if (r.ok) {
+    // Offer the next free spot right next to the one just used, so rows of buildings are quick.
+    placeBuild({ x: p.o.x + Math.floor((p.def.w - 1) / 2), z: p.o.z + Math.floor((p.def.d - 1) / 2) }, true);
+  }
+}
+
+/* ---- roads ---- */
+
+function previewRoad(a, b, hasEnd) {
+  const r = japi('RoadPreview', a.x, a.z, b.x, b.z);
+  S.road = { a, b, r, done: false, hasEnd };
+  const cs = S.meta.cellSize;
+  R.ghost.visible = false;
+  R.pathGhost.material.color.set(r.ok ? 0x63bba3 : 0xe2625a);
+  const n = Math.min(400, r.cells.length / 2);
+  for (let i = 0; i < n; i++) {
+    const x = r.cells[i * 2], z = r.cells[i * 2 + 1];
+    _p.set((x + 0.5) * cs, heightAt((x + 0.5) * cs, (z + 0.5) * cs) + 0.8, (z + 0.5) * cs);
+    _s.set(cs * 0.9, 1.4, cs * 0.9);
+    _m.compose(_p, _q, _s);
+    R.pathGhost.setMatrixAt(i, _m);
+  }
+  R.pathGhost.count = n;
+  R.pathGhost.instanceMatrix.needsUpdate = true;
+  if (!hasEnd) { showBar('<b>道路</b><br><small>始点を決めました。終点をタップするか、指でなぞって引いてください</small>', '建設', false, commitRoad, false); return; }
+  showBar(`<b>道路 ${n}マス</b> ${yen(r.cost)}<br><small class="${r.ok ? 'good' : 'bad'}">${r.ok ? '✓ 建設できます（曲がり角は自動でL字）' : '✕ 建物・水面・急斜面を通ります'}</small>`,
+    '建設', r.ok, commitRoad, false);
+}
+
+function commitRoad() {
+  const rd = S.road;
+  if (!rd || !rd.hasEnd) return;
+  const r = exec({ type: 'road', x1: rd.a.x, z1: rd.a.z, x2: rd.b.x, z2: rd.b.z });
+  if (r.ok) {
+    // Continue drawing from the end point, like a pen.
+    S.road = { a: rd.b, b: rd.b, done: false, hasEnd: false };
+    previewRoad(rd.b, rd.b, false);
+  }
+}
+
+/* ---- bulldozer ---- */
+
+function targetBulldoze(cell, showConfirm) {
+  const info = japi('Inspect', cell.x, cell.z);
+  S.bulldoze = { cell, info };
+  const b = info?.building;
+  if (b) {
+    const rec = S.buildingList?.find((x) => x[0] === b.id);
+    const d = S.defs[b.def];
+    if (rec) drawBox(rec[2], rec[3], d.w, d.d, d.h + 2, true, true);
+  } else drawBox(cell.x, cell.z, 1, 1, 3, !!info?.road, true);
+  const what = b ? `${b.name} #${b.id}` : info?.road ? '道路 1マス' : null;
+  if (showConfirm || isTouch) showBar(what ? `<b>撤去：${esc(what)}</b>${b?.company?.workers ? `<br><small class="warn">従業員 ${b.company.workers}人が職を失います</small>` : b?.residents ? `<br><small class="warn">住民 ${b.residents}人が住まいを失います</small>` : ''}` : '<b>撤去</b><br><small>撤去するものがありません</small>',
+    '撤去', !!what, commitBulldoze, false);
+}
+
+function commitBulldoze() {
+  const t = S.bulldoze;
+  if (!t) return;
+  const r = exec({ type: 'bulldoze', x: t.cell.x, z: t.cell.z });
+  if (r.ok) hideBar();
+}
+
+/* ---- ghost & bar ---- */
+
+/** Pans the overhead camera if the ghost ended up off-screen or under a panel. */
+function revealGhost() {
+  if (S.cam !== 'overhead' || !R.ghost.visible) return;
+  const v = R.ghost.position.clone().project(R.camera);
+  const sx = (v.x + 1) / 2 * innerWidth, sy = (1 - v.y) / 2 * innerHeight;
+  const panel = $('#panel').getBoundingClientRect();
+  const blocked = !$('#panel').hidden && !$('#panel').classList.contains('collapsed') && sx > panel.left && sy > panel.top && sy < panel.bottom;
+  if (v.z > 1 || sx < 90 || sx > innerWidth - 20 || sy < 80 || sy > innerHeight - 150 || blocked) {
+    Cam.target.x = R.ghost.position.x;
+    Cam.target.z = R.ghost.position.z;
+  }
+}
+
+function drawBox(x, z, w, d, h, ok, warn) {
+  const cs = S.meta.cellSize;
+  R.pathGhost.count = 0;
+  const y = heightAt((x + w / 2) * cs, (z + d / 2) * cs);
+  R.ghost.position.set((x + w / 2) * cs, y + h / 2, (z + d / 2) * cs);
+  R.ghost.scale.set(w * cs, h, d * cs);
+  R.ghost.material.color.set(!ok ? 0xe2625a : warn ? 0xe3b341 : 0x63bba3);
+  R.ghost.visible = true;
+}
+
+function updateGhost(cell) {
+  R.ghost.visible = false;
+  R.pathGhost.count = 0;
+  if (cell && ['raise', 'lower', 'flatten'].includes(S.tool)) drawBox(cell.vx - 3, cell.vz - 3, 6, 6, 1.5, true, S.tool !== 'raise');
+}
+
+function showBar(html, okLabel, okEnabled, onOk, withList) {
+  S.barAction = onOk;
+  $('#confirmText').innerHTML = html;
+  $('#confirmOk').textContent = okLabel;
+  $('#confirmOk').disabled = !okEnabled;
+  $('#confirmList').hidden = !withList;
   $('#confirm').hidden = false;
 }
-function cancelPending() { S.pending = null; $('#confirm').hidden = true; }
+function hideBar() { S.barAction = null; $('#confirm').hidden = true; }
+function cancelPending() {
+  hideBar();
+  S.place = null;
+  S.road = null;
+  S.bulldoze = null;
+  R.ghost.visible = false;
+  R.pathGhost.count = 0;
+}
 
 function exec(cmd, quiet) {
   const r = japi('Execute', JSON.stringify(cmd));
   if (!quiet || !r.ok) toast(r.msg || (r.ok ? '完了' : '失敗'), !r.ok);
-  if (r.ok && S.hover) updateGhost(S.hover);
   return r;
 }
 
@@ -683,8 +809,9 @@ function initUi() {
     const c = $('#panel').classList.toggle('collapsed');
     $('#collapse').textContent = c ? '▴' : '▾';
   });
-  $('#confirmOk').addEventListener('click', () => { const p = S.pending; cancelPending(); p?.run(); });
-  $('#confirmCancel').addEventListener('click', cancelPending);
+  $('#confirmOk').addEventListener('click', () => S.barAction?.());
+  $('#confirmCancel').addEventListener('click', () => { cancelPending(); if (S.tool !== 'inspect') setTool('inspect'); });
+  $('#confirmList').addEventListener('click', () => ($('#drawer').hidden = !$('#drawer').hidden));
   initStick();
   Cam.setMode('overhead');
   $$('[data-cam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cam === 'overhead')));
@@ -721,13 +848,25 @@ function setSpeed(v) {
 
 function setTool(tool) {
   S.tool = tool;
-  S.roadStart = null;
   cancelPending();
   $$('[data-tool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === tool)));
-  $('#drawer').hidden = tool !== 'build';
+  $('#drawer').hidden = tool !== 'build' || !!S.buildDef;
   if (tool !== 'inspect') { S.inspect = null; R.select.visible = false; }
-  updateGhost(S.hover);
-  if (tool === 'build' && !S.buildDef) toast('建てる建物を選んでください');
+  // Building needs the map: fold the notebook away while a build tool is active, bring it back for 調査.
+  $('#panel').classList.toggle('collapsed', tool !== 'inspect');
+  $('#collapse').textContent = tool !== 'inspect' ? '▴' : '▾';
+  if (tool === 'build' && S.buildDef) placeBuild(centerCell(), true);
+  else if (tool === 'build') toast('建てる建物を選んでください');
+  else if (tool === 'road') showBar('<b>道路</b><br><small>始点から終点まで指（マウス）でなぞるか、2か所をタップ</small>', '建設', false, commitRoad, false);
+  else if (tool === 'bulldoze') showBar('<b>撤去</b><br><small>撤去したい建物・道路をタップ</small>', '撤去', false, commitBulldoze, false);
+  else updateGhost(S.hover);
+}
+
+/** The map cell under the middle of the screen (where new ghosts appear). */
+function centerCell() {
+  const panel = $('#panel');
+  const right = panel && !panel.hidden && innerWidth > 760 ? panel.getBoundingClientRect().width : 0;
+  return pick((innerWidth - right) / 2, innerHeight / 2) || S.hover;
 }
 
 function setOverlay(kind) {
@@ -753,7 +892,9 @@ function buildDrawer() {
   $$('#drawer .bitem').forEach((el) => el.addEventListener('click', () => {
     S.buildDef = el.dataset.def;
     $$('#drawer .bitem').forEach((x) => x.setAttribute('aria-pressed', String(x === el)));
-    if (isTouch) toast('地図をタップして場所を選んでください');
+    $('#drawer').hidden = true; // get the list out of the way; the bar's 一覧 button brings it back
+    placeBuild(centerCell(), true);
+    toast(isTouch ? 'タップ・ドラッグで場所を動かし、「建設」で確定' : 'クリックで建設（何度でも続けて置けます）');
   }));
 }
 
@@ -1118,12 +1259,14 @@ function frame(t) {
   if (t - S.lastHud > 250) { S.lastHud = t; updateHud(st); if (S.tab === 'info' && S.inspect && t - S.lastPanel > 1000) { S.lastPanel = t; renderPanel(); } }
   // Day/night: sky, fog and light follow the in-game hour.
   const hour = st.hour + st.progress;
+  // Night is a bright blue evening: the change of time is visible, but the map stays easy to read.
   const daylight = Math.max(0, Math.sin(((hour - 5.5) / 13) * Math.PI));
-  R.sky.copy(NIGHT).lerp(DAY, 0.15 + 0.85 * daylight);
+  R.sky.copy(NIGHT).lerp(DAY, daylight);
   R.scene.background = R.sky;
   R.scene.fog.color.copy(R.sky);
-  R.hemi.intensity = 0.35 + 0.45 * daylight;
-  R.sun.intensity = 0.15 + 0.8 * daylight;
+  R.hemi.intensity = 0.72 + 0.08 * daylight;
+  R.hemi.color.setRGB(0.86 + 0.06 * daylight, 0.9 + 0.04 * daylight, 1.0);
+  R.sun.intensity = 0.6 + 0.25 * daylight;
   R.flood.visible = st.floodLevel > 0;
   R.flood.position.y = st.floodLevel;
   Cam.update(dt);

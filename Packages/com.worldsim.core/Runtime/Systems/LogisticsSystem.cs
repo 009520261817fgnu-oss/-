@@ -65,6 +65,16 @@ namespace WorldSim.Core.Systems
                     if (need > 0.5) yield return new KeyValuePair<string, double>(kv.Key, need);
                 }
             }
+            if (co.IsContractor && co.Backlog > 0)
+            {
+                // Materials for the work on the books, up to a few days ahead.
+                double work = Math.Min(co.Backlog, EconomyState.WorkCapacity(co) * InputStockDays);
+                foreach (var m in co.Def.ParamsWithPrefix("material"))
+                {
+                    double need = work / 1e6 * m.Value - co.Stock(m.Key);
+                    if (need > 0.5) yield return new KeyValuePair<string, double>(m.Key, need);
+                }
+            }
             foreach (string res in co.Def.Sells)
             {
                 if (co.Produces(res)) continue;

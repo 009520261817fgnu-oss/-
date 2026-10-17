@@ -109,6 +109,7 @@ namespace WorldSim.Core.Simulation
             new Intervention("商店をすべて撤去", w => Remove(w, b => b.Def.Id == "shop")),
             new Intervention("食品工場を撤去", w => Remove(w, b => b.Def.Id == "food_plant")),
             new Intervention("農場を撤去", w => Remove(w, b => b.Def.Id == "farm")),
+            new Intervention("建設会社を撤去", w => Remove(w, b => b.Def.Id == "construction")),
             new Intervention("研究所と学校を撤去", w => Remove(w, b => b.Def.Id == "research_lab" || b.Def.Id == "school")),
             new Intervention("町の近くに集合住宅6棟", w => BuildNearTown(w, "apartment", 6)),
             new Intervention("市外への道路を遮断", CutOutsideRoads),

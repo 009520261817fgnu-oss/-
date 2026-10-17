@@ -952,11 +952,14 @@ function renderInfo(el) {
         }
       }
       if (co) {
+        if (co.contractor) html += `<p class="empty" style="font-size:12.5px">町の建設・維持管理・災害復旧を請け負います。受注残が30日分を超える仕事は市外の業者に流れます。資材（鋼材・木材）を地元や輸入で調達します。</p>`;
         const status = co.closed ? '<span class="pill bad">倒産・休業中</span>' : co.broken ? `<span class="pill accent">設備故障（あと${co.broken}日）</span>` : co.shortage ? '<span class="pill accent">原材料不足</span>' : '<span class="pill good">稼働中</span>';
         html += `<h4>${co.public ? '公共施設の運営' : '企業'}</h4><p>${status}</p>` + dl([
           ['従業員 / 目標 / 上限', `${co.workers} / ${co.target} / ${co.capacity}`], ['賃金（日）', yen(co.wage)],
           co.public ? null : ['資金', yen(co.cash)], co.public ? null : ['利益（平均・日）', yen(co.profitAvg)],
           co.outputCapacity ? ['稼働率', pct(co.output / Math.max(1e-9, co.outputCapacity))] : null,
+          co.contractor ? ['受注残（工事）', `${yen(co.backlog)}（${co.workPerDay ? (co.backlog / co.workPerDay).toFixed(1) : '—'}日分）`] : null,
+          co.contractor ? ['1日の施工能力', yen(co.workPerDay)] : null,
           ['電力使用', `${Math.round(co.energy).toLocaleString()} kWh`],
           co.techs.length ? ['導入技術', esc(co.techs.join('、'))] : null]);
         const inv = Object.entries(co.inventory);

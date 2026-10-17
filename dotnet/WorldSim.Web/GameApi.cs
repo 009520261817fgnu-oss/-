@@ -366,6 +366,7 @@ namespace WorldSim.Web
                         ["profitAvg"] = co.ProfitAvg, ["closed"] = co.Closed, ["broken"] = co.BrokenDays,
                         ["output"] = co.LastOutput, ["outputCapacity"] = co.OutputCapacity, ["shortage"] = co.InputShortage,
                         ["energy"] = co.EnergyUse, ["recipe"] = co.Recipe?.Id,
+                        ["contractor"] = co.IsContractor, ["backlog"] = (double)co.Backlog, ["workPerDay"] = (double)EconomyState.WorkCapacity(co),
                         ["inventory"] = co.Inventory.ToDictionary(kv => kv.Key, kv => (object)Math.Round(kv.Value)),
                         ["techs"] = co.AdoptedTechs.Cast<object>().ToList(),
                     };

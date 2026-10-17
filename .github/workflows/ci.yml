@@ -29,7 +29,7 @@ jobs:
           dotnet-version: 8.0.x
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Publish the web build
         run: cd dotnet && ./publish-web.sh
       - name: Install Playwright

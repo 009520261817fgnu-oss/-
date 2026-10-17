@@ -197,7 +197,7 @@ namespace WorldSim.Core.World
             if (ChargeConstruction)
             {
                 if (Economy.City.Cash < def.Cost) return CommandResult.Fail($"予算不足です（必要 {def.Cost / 10000:N0}万円）");
-                Economy.Ledger.Transfer(Economy.City, Economy.External, def.Cost, Flow.Construction);
+                Economy.PayForWork(Economy.City, def.Cost, Flow.Construction);
             }
 
             GridRect r = GridRect.FromSize(origin, def.Width, def.Depth);
@@ -276,7 +276,7 @@ namespace WorldSim.Core.World
             if (ChargeConstruction && newCells > 0)
             {
                 if (Economy.City.Cash < cost) return CommandResult.Fail($"予算不足です（必要 {cost / 10000:N0}万円）");
-                Economy.Ledger.Transfer(Economy.City, Economy.External, cost, Flow.Construction);
+                Economy.PayForWork(Economy.City, cost, Flow.Construction);
             }
 
             int added = 0;
@@ -535,7 +535,7 @@ namespace WorldSim.Core.World
             }
             foreach (Company c in e.Companies.Values)
             {
-                h.Add(c.BuildingId); h.Add(c.Cash); h.Add(c.Wage); h.Add(c.Workers.Count); h.Add(c.Closed);
+                h.Add(c.BuildingId); h.Add(c.Cash); h.Add(c.Wage); h.Add(c.Workers.Count); h.Add(c.Closed); h.Add(c.Backlog);
                 foreach (var kv in c.Inventory) { h.Add(kv.Key); h.Add(kv.Value); }
                 foreach (string t in c.AdoptedTechs) h.Add(t);
             }

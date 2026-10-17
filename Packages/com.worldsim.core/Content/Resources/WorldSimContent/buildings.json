@@ -12,6 +12,7 @@
     { "id": "steel_mill", "name": "製鉄所",   "category": "Industrial",  "width": 4, "depth": 4, "height": 16, "maxSlope": 2.0, "color": "#8C8C96", "cost": 25000000, "recipe": "smelt_steel",  "params": { "jobs": 30, "energy": 5000, "pollution": 60 } },
     { "id": "food_plant", "name": "食品工場", "category": "Industrial",  "width": 3, "depth": 3, "height": 9,  "color": "#C9B8A0", "cost": 10000000, "recipe": "process_food", "params": { "jobs": 15, "energy": 1500, "pollution": 10 } },
     { "id": "factory",    "name": "工場",     "category": "Industrial",  "width": 4, "depth": 4, "height": 10, "maxSlope": 2.0, "color": "#B0A08C", "cost": 20000000, "recipe": "make_goods",   "params": { "jobs": 30, "energy": 3000, "pollution": 30 } },
+    { "id": "construction", "name": "建設会社", "category": "Commercial", "width": 3, "depth": 3, "height": 6, "color": "#C77B30", "cost": 6000000, "params": { "jobs": 20, "energy": 200, "workPerWorker": 60000, "repairCrews": 2, "material.steel": 10, "material.wood": 40 } },
     { "id": "warehouse",  "name": "物流倉庫", "category": "Industrial",  "width": 3, "depth": 3, "height": 7,  "color": "#9A8C78", "cost": 6000000,  "params": { "jobs": 10, "energy": 200, "logistics": 1 } },
 
     { "id": "power_plant", "name": "火力発電所",   "category": "Power", "width": 4, "depth": 4, "height": 14, "maxSlope": 2.0, "color": "#7A7A80", "cost": 40000000, "params": { "jobs": 20, "wagePremium": 1.3, "powerOutput": 120000, "pollution": 80, "fuelCost": 6 } },

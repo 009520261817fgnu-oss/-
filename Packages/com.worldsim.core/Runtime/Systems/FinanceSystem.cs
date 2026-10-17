@@ -73,11 +73,12 @@ namespace WorldSim.Core.Systems
                     c.LastNetIncome = l.TransferUpTo(e.City, c, p.UnemploymentBenefit, Flow.Benefit);
             }
 
+            long publicMaintenance = 0;
             foreach (Company co in e.Companies.Values)
             {
                 if (co.IsPublic)
                 {
-                    l.Transfer(e.City, e.External, (long)co.Def.GetParam("maintenance"), Flow.Maintenance);
+                    publicMaintenance += (long)co.Def.GetParam("maintenance");
                     continue;
                 }
                 long profit = co.RevenueToday - co.CostToday;
@@ -96,10 +97,13 @@ namespace WorldSim.Core.Systems
             }
 
             PayDividends(w);
-            l.Transfer(e.City, e.External, w.RoadCellCount * RoadMaintenancePerCell, Flow.Maintenance);
+            // Upkeep and preparedness works are contracted after the books are closed, so the
+            // contractors' revenue counts towards tomorrow's profit like any other sale.
+            e.PayForWork(e.City, publicMaintenance + w.RoadCellCount * RoadMaintenancePerCell, Flow.Maintenance);
             if (p.PreparednessBudget > 0)
             {
-                long spent = l.TransferUpTo(e.City, e.External, p.PreparednessBudget, Flow.Preparedness);
+                long spent = Math.Min(p.PreparednessBudget, Math.Max(0, e.City.Cash));
+                e.PayForWork(e.City, spent, Flow.Preparedness);
                 e.City.PreparednessStock += spent;
             }
             e.City.PreparednessStock *= 0.999; // slow depreciation

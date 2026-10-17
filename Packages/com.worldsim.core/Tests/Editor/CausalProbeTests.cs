@@ -132,6 +132,15 @@ namespace WorldSim.Core.Tests
         }
 
         [Test]
+        public void WithoutLocalBuildersUpkeepMoneyLeavesTown()
+        {
+            // The city's upkeep and repair money goes to outside firms instead of local wages.
+            Assert.Less(Change("建設会社を撤去", "companyProfit"), 0);
+            Assert.Less(Change("建設会社を撤去", "treasury"), 0, "less local income, less tax");
+            Assert.Less(Change("建設会社を撤去", "population"), 0);
+        }
+
+        [Test]
         public void ResearchNeedsTheLab()
         {
             Assert.AreEqual(-1.0, Change("研究所と学校を撤去", "research"), 1e-9);

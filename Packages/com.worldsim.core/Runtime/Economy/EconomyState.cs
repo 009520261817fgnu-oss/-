@@ -176,6 +176,53 @@ namespace WorldSim.Core.Economy
             if (homeId != 0) Occupancy[homeId] = Residents(homeId) + 1;
         }
 
+        /// <summary>Days of work a contractor may have on its books before new jobs go to outside firms.</summary>
+        public const int ContractorBacklogDays = 30;
+
+        /// <summary>Yen of work a contractor's current staff can do per day.</summary>
+        public static long WorkCapacity(Company co) => (long)(co.Workers.Count * co.Def.GetParam("workPerWorker"));
+
+        /// <summary>
+        /// Pays for construction, maintenance or repair work (S2). Local contractors take the work while
+        /// they have room in their order books (shared by spare capacity); the rest goes to firms outside
+        /// the town. Returns the yen that stayed local.
+        /// </summary>
+        public long PayForWork(Account payer, long amount, Flow flow)
+        {
+            if (amount <= 0) return 0;
+            long totalFree = 0;
+            foreach (Company co in Companies.Values)
+                if (co.IsContractor && !co.Closed) totalFree += ContractorFree(co);
+            long local = Math.Min(amount, totalFree), left = local;
+            if (local > 0)
+            {
+                Company last = null;
+                foreach (Company co in Companies.Values)
+                {
+                    if (!co.IsContractor || co.Closed) continue;
+                    long free = ContractorFree(co);
+                    if (free <= 0) continue;
+                    long part = Math.Min(left, (long)((double)local * free / totalFree));
+                    Award(co, payer, part, flow);
+                    left -= part;
+                    last = co;
+                }
+                if (left > 0 && last != null) { Award(last, payer, left, flow); left = 0; }
+            }
+            Ledger.Transfer(payer, External, amount - local + left, flow);
+            return local - left;
+        }
+
+        private static long ContractorFree(Company co) => Math.Max(0, WorkCapacity(co) * ContractorBacklogDays - co.Backlog);
+
+        private void Award(Company co, Account payer, long part, Flow flow)
+        {
+            if (part <= 0) return;
+            Ledger.Transfer(payer, co, part, flow);
+            co.RevenueToday += part;
+            co.Backlog += part;
+        }
+
         public void Hire(Company co, Citizen c, Cause cause = Cause.Hired)
         {
             if (c.JobId != 0) Fire(c);

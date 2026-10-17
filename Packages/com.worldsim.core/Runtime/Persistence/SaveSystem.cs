@@ -192,7 +192,7 @@ namespace WorldSim.Core.Persistence
                     ["rev"] = (double)co.RevenueToday, ["cost"] = (double)co.CostToday,
                     ["profitAvg"] = co.ProfitAvg, ["lastProfit"] = (double)co.LastProfit,
                     ["lastOutput"] = co.LastOutput, ["outputCap"] = co.OutputCapacity,
-                    ["shortage"] = co.InputShortage, ["energy"] = co.EnergyUse, ["targetCause"] = (int)co.TargetCause,
+                    ["shortage"] = co.InputShortage, ["energy"] = co.EnergyUse, ["targetCause"] = (int)co.TargetCause, ["backlog"] = (double)co.Backlog,
                 });
             return new Dictionary<string, object>
             {
@@ -287,6 +287,7 @@ namespace WorldSim.Core.Persistence
                     InputShortage = (bool)d["shortage"], EnergyUse = d.GetDouble("energy"),
                 };
                 if (d.ContainsKey("targetCause")) co.TargetCause = (Cause)d.GetInt("targetCause");
+                if (d.ContainsKey("backlog")) co.Backlog = (long)d.GetDouble("backlog");
                 foreach (object x in (IList<object>)d["workers"]) co.Workers.Add(I(x));
                 ReadDict(Obj(d, "inv"), co.Inventory);
                 ReadDict(Obj(d, "salesAvg"), co.SalesAvg);

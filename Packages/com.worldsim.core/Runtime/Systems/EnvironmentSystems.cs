@@ -260,7 +260,7 @@ namespace WorldSim.Core.Systems
             {
                 var c = new GridPos(x, z);
                 if (!w.IsRoadDamaged(c) || budget < RoadRepairCost) continue;
-                e.Ledger.Transfer(e.City, e.External, RoadRepairCost, Flow.Repair);
+                e.PayForWork(e.City, RoadRepairCost, Flow.Repair);
                 budget -= RoadRepairCost;
                 w.SetRoadDamaged(c, false);
                 roadCapacity--;
@@ -280,7 +280,7 @@ namespace WorldSim.Core.Systems
                     amount *= (float)budget / cost;
                     cost = budget;
                 }
-                e.Ledger.Transfer(e.City, e.External, cost, Flow.Repair);
+                e.PayForWork(e.City, cost, Flow.Repair);
                 budget -= cost;
                 w.SetCondition(b, b.Condition + amount >= 0.999f ? 1f : b.Condition + amount);
                 crews -= 1;

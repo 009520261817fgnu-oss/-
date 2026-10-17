@@ -32,6 +32,7 @@ namespace WorldSim.Core.Systems
                 co.InputShortage = false;
                 co.LastOutput = 0;
                 co.OutputCapacity = 0;
+                if (co.IsContractor) { DoContractWork(co); continue; }
                 if (co.Closed || co.Recipe == null) continue;
                 if (!w.TryGetBuilding(co.BuildingId, out Building b)) continue;
 
@@ -125,6 +126,28 @@ namespace WorldSim.Core.Systems
             }
         }
 
+        /// <summary>
+        /// A contractor works through its order book as far as its staff and building materials allow
+        /// ("material.x" params: units of x per million yen of work, bought by the logistics system).
+        /// </summary>
+        public static void DoContractWork(Company co)
+        {
+            if (co.Closed) return;
+            long capacity = EconomyState.WorkCapacity(co);
+            double work = Math.Min(co.Backlog, capacity);
+            foreach (var m in co.Def.ParamsWithPrefix("material"))
+            {
+                if (m.Value <= 0) continue;
+                double possible = co.Stock(m.Key) / m.Value * 1e6;
+                if (possible < work) { work = possible; co.InputShortage = true; }
+            }
+            foreach (var m in co.Def.ParamsWithPrefix("material"))
+                co.Inventory[m.Key] = Math.Max(0, co.Stock(m.Key) - work / 1e6 * m.Value);
+            co.Backlog -= (long)work;
+            co.LastOutput = work;
+            co.OutputCapacity = capacity;
+        }
+
         public static void UpdateBreakdown(WorldState w, Company co)
         {
             BuildingCategory cat = co.Def.Category;
@@ -135,7 +158,8 @@ namespace WorldSim.Core.Systems
                 if (co.BrokenDays == 0)
                 {
                     long cost = co.Def.Cost / 100;
-                    long paid = w.Economy.Ledger.TransferUpTo(co, w.Economy.External, cost, Flow.Repair);
+                    long paid = Math.Min(cost, Math.Max(0, co.Cash));
+                    w.Economy.PayForWork(co, paid, Flow.Repair);
                     co.CostToday += paid;
                 }
                 return;

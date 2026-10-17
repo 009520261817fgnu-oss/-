@@ -84,6 +84,13 @@ namespace WorldSim.Core.Systems
                     if (stock < perDay * 2) understocked = true;
                 }
             }
+            else if (co.IsContractor)
+            {
+                // Contractors staff to their order book: hire with more than a few days of work queued.
+                long capacity = Math.Max(1, EconomyState.WorkCapacity(co));
+                understocked = co.Backlog > capacity * 3;
+                overstocked = co.Backlog < capacity;
+            }
             else if (co.IsRetail)
             {
                 // Retailers staff to sales: grow while selling out, shrink while losing money.

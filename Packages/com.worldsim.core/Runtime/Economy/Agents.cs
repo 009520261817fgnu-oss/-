@@ -102,6 +102,10 @@ namespace WorldSim.Core.Economy
         public bool IsOperating => !Closed;
         public bool IsRetail => Def.Sells.Length > 0;
         public bool IsLogistics => Def.GetParam("logistics") > 0;
+        /// <summary>Builds, maintains and repairs for others (S2: the local construction industry).</summary>
+        public bool IsContractor => Def.GetParam("workPerWorker") > 0;
+        /// <summary>Contracted work not yet done, in yen (contractors only).</summary>
+        public long Backlog;
         public double PowerOutput => Def.GetParam("powerOutput");
     }
 }

@@ -49,6 +49,18 @@ namespace WorldSim.Core.Content
 
         public double GetParam(string key, double fallback = 0) => Params.TryGetValue(key, out double v) ? v : fallback;
 
+        /// <summary>
+        /// Parameters named "prefix.x" as x → value, in a fixed order (e.g. "material.steel": tonnes of
+        /// steel per million yen of construction work).
+        /// </summary>
+        public SortedDictionary<string, double> ParamsWithPrefix(string prefix)
+        {
+            var r = new SortedDictionary<string, double>(StringComparer.Ordinal);
+            foreach (var kv in Params)
+                if (kv.Key.StartsWith(prefix + ".", StringComparison.Ordinal)) r[kv.Key.Substring(prefix.Length + 1)] = kv.Value;
+            return r;
+        }
+
         public int Housing => (int)GetParam("housing");
         public int Jobs => (int)GetParam("jobs");
         public bool IsPublic => Category == BuildingCategory.Public;

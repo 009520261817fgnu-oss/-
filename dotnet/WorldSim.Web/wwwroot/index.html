@@ -152,6 +152,18 @@ ul.plain b { color: var(--text); font-weight: 500; }
 #updown { position: fixed; z-index: 12; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 222px); bottom: calc(env(safe-area-inset-bottom, 0px) + 30px); display: grid; gap: 8px; }
 #updown button { width: 48px; height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); font-size: 18px; }
 
+/* Why? panel */
+.stat.why { cursor: pointer; border-radius: 6px; padding: 1px 4px; margin: -1px -4px; }
+.stat.why:hover, .stat.why:focus-visible { background: rgba(236,230,218,.08); }
+.stat.why span::after { content: " ?"; color: var(--accent); }
+.whyRow { padding: 7px 0; border-bottom: 1px solid var(--line); }
+.whyLabel { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.whyLabel b { font-weight: 500; white-space: nowrap; }
+.whyBar { height: 6px; border-radius: 3px; background: var(--raised); margin-top: 4px; overflow: hidden; }
+.whyBar i { display: block; height: 100%; border-radius: 3px; }
+.whyAgents { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+.linkish { border: 0; background: none; padding: 0; color: var(--info); text-decoration: underline; font-size: 11.5px; }
+
 /* Life mode card */
 #lifeCard { position: fixed; z-index: 11; left: max(10px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); width: min(400px, calc(100vw - 20px));
   max-height: 46vh; overflow: auto; padding: 10px 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
@@ -204,9 +216,9 @@ body.life #stick { left: 50%; margin-left: -60px; bottom: calc(env(safe-area-ins
 
 <header id="hud" hidden>
   <div class="stat date"><b id="hDate">—</b><span id="hBranch">本線</span></div>
-  <div class="stat"><b id="hCash">—</b><span>市の資金</span></div>
-  <div class="stat"><b id="hPop">—</b><span>人口</span></div>
-  <div class="stat"><b id="hUnemp">—</b><span>失業率</span></div>
+  <div class="stat why" data-why="treasury"><b id="hCash">—</b><span>市の資金</span></div>
+  <div class="stat why" data-why="population"><b id="hPop">—</b><span>人口</span></div>
+  <div class="stat why" data-why="unemployment"><b id="hUnemp">—</b><span>失業率</span></div>
   <div class="stat hide-sm"><b id="hHappy">—</b><span>満足度</span></div>
   <div class="stat hide-sm"><b id="hEnergy">—</b><span>電力</span></div>
   <div class="stat hide-sm"><b id="hWeather">—</b><span>天気</span></div>
@@ -249,6 +261,7 @@ body.life #stick { left: 50%; margin-left: -60px; bottom: calc(env(safe-area-ins
 <aside id="panel" hidden>
   <div class="tabs" role="tablist">
     <button role="tab" data-tab="info" aria-selected="true">情報</button>
+    <button role="tab" data-tab="why">なぜ？</button>
     <button role="tab" data-tab="analysis">分析</button>
     <button role="tab" data-tab="charts">グラフ</button>
     <button role="tab" data-tab="life">人生</button>
@@ -283,3 +296,4 @@ body.life #stick { left: 50%; margin-left: -60px; bottom: calc(env(safe-area-ins
 <script src="framework/blazor.webassembly.js" autostart="false"></script>
 <script src="app.js"></script>
 <script src="life.js"></script>
+<script src="why.js"></script>

@@ -823,6 +823,7 @@ function initUi() {
   $$('[data-cam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cam === 'overhead')));
   buildDrawer();
   Life.init();
+  Why.init();
   initMouseLook();
   $('#gyroBtn').addEventListener('click', () => Gyro.toggle());
 }
@@ -918,7 +919,7 @@ function showTab(tab) {
 function renderPanel() {
   const body = $('#panelBody');
   const fn = { info: renderInfo, analysis: renderAnalysis, charts: renderCharts, policy: renderPolicy, research: renderResearch,
-    branches: renderBranches, save: renderSave, disaster: renderDisaster, news: renderNews, about: renderAbout, life: (b) => Life.renderPanel(b) }[S.tab];
+    branches: renderBranches, save: renderSave, disaster: renderDisaster, news: renderNews, about: renderAbout, life: (b) => Life.renderPanel(b), why: (b) => Why.render(b) }[S.tab];
   const scroll = body.scrollTop;
   fn(body);
   body.scrollTop = scroll;
@@ -1104,7 +1105,7 @@ function renderBranches(el) {
     <button class="btn primary" id="fork">ここから分岐</button></div>
     <h4>分岐の一覧</h4>` + list.map((b) => `<div class="tech ${b.active ? 'current' : ''}"><header><b>${esc(b.name)}</b>${b.active ? '<span class="pill accent">表示中</span>' : ''}</header>
       <small>${esc(b.clock)}・人口 ${b.population.toLocaleString()}・資金 ${yen(b.cash)}${b.parent ? `・${b.forkDay}日目に分岐` : ''}</small>
-      ${b.active ? '' : `<div class="row"><button class="btn" data-sw="${b.id}">表示する</button><button class="btn" data-adv="${b.id}">裏で30日進める</button><button class="btn danger" data-rm="${b.id}">削除</button></div>`}</div>`).join('') +
+      ${b.active ? '' : `<div class="row"><button class="btn" data-sw="${b.id}">表示する</button><button class="btn" data-why-branch="${b.id}">違いの原因</button><button class="btn" data-adv="${b.id}">裏で30日進める</button><button class="btn danger" data-rm="${b.id}">削除</button></div>`}</div>`).join('') +
     `<h4>分岐の比較</h4><select id="cmpKey">${Object.entries(SERIES).map(([k, [n]]) => `<option value="${k}">${n}</option>`).join('')}</select>
      <canvas class="chart" id="cmpChart" style="margin-top:8px"></canvas><div class="legend" id="cmpLegend"></div>`;
   $('#cmpKey').value = S.compareKey;
@@ -1115,6 +1116,7 @@ function renderBranches(el) {
     renderBranches(el);
   });
   $$('[data-sw]').forEach((b) => b.addEventListener('click', () => { api('SwitchBranch', +b.dataset.sw); S.versions = [-1, -1, -1, -1]; S.inspect = null; setSpeed(0); toast('分岐を切り替えました（停止中）'); renderBranches(el); }));
+  $$('[data-why-branch]').forEach((b) => b.addEventListener('click', () => Why.open(Why.metric, +b.dataset.whyBranch)));
   $$('[data-adv]').forEach((b) => b.addEventListener('click', () => { api('AdvanceBranch', +b.dataset.adv, 30); renderBranches(el); }));
   $$('[data-rm]').forEach((b) => b.addEventListener('click', () => { const r = japi('RemoveBranch', +b.dataset.rm); toast(r.msg, !r.ok); renderBranches(el); }));
   drawCompare(list);
@@ -1256,7 +1258,7 @@ function frame(t) {
   if (st.days !== S.days) {
     S.days = st.days;
     if (S.overlay !== 'none') { recolorTerrain(); refreshRoads(); }
-    if (t - S.lastPanel > 900 && ['analysis', 'charts', 'branches', 'research'].includes(S.tab)) { S.lastPanel = t; renderPanel(); }
+    if (t - S.lastPanel > 900 && ['analysis', 'charts', 'branches', 'research', 'why'].includes(S.tab)) { S.lastPanel = t; renderPanel(); }
   }
   const eventKey = st.events + ':' + st.lastEventTick;
   if (eventKey !== S.eventKey) {

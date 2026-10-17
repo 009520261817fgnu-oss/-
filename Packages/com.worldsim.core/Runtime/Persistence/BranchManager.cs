@@ -66,6 +66,27 @@ namespace WorldSim.Core.Persistence
             Active = target;
         }
 
+        /// <summary>
+        /// The last tick at which two branches were still the same world: the earliest fork on the
+        /// paths from each branch up to their common ancestor. Used to explain why branches differ.
+        /// </summary>
+        public long DivergenceTick(int a, int b)
+        {
+            Branch Parent(Branch x) { foreach (Branch p in _branches) if (p.Id == x.ParentId) return p; return null; }
+            var ancestors = new HashSet<int>();
+            for (Branch x = Get(a); x != null; x = Parent(x)) ancestors.Add(x.Id);
+            Branch common = Get(b);
+            while (common != null && !ancestors.Contains(common.Id)) common = Parent(common);
+            long Up(int from)
+            {
+                long t = long.MaxValue;
+                for (Branch x = Get(from); x != null && x != common; x = Parent(x)) t = Math.Min(t, x.ForkTick);
+                return t;
+            }
+            long tick = Math.Min(Up(a), Up(b));
+            return tick == long.MaxValue ? Math.Min(Get(a).World.Clock.Tick, Get(b).World.Clock.Tick) : tick;
+        }
+
         /// <summary>Runs a branch forward headlessly (other branches keep their own time).</summary>
         public void Advance(int id, int days) => Get(id).Runner.StepMany(days * SimClock.TicksPerDay);
 

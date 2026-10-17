@@ -38,9 +38,10 @@ namespace WorldSim.Core.Systems
                 else if (surplus > 0.05 * scale) { p *= 1 - Step; why = Cause.PriceSurplus; }
                 double bounded = Math.Max(r.BasePrice * MinFactor, Math.Min(r.BasePrice * MaxFactor, p));
                 m.Price[r.Id] = bounded;
-                // Book the move in log units so daily moves add up exactly to the change over any period.
-                if (why != Cause.Unspecified) log.Book(CauseMetric.PriceLog, index * 64 + (int)why, (long)Math.Round(Math.Log(p / old) * 1e6));
-                if (bounded != p) log.Book(CauseMetric.PriceLog, index * 64 + (int)Cause.PriceBound, (long)Math.Round(Math.Log(bounded / p) * 1e6));
+                // Book the actual move in log units so daily moves add up exactly over any period. A price
+                // held at its bound does not move, so nothing is booked for it.
+                if (bounded != old)
+                    log.Book(CauseMetric.PriceLog, index * 64 + (int)(why == Cause.Unspecified ? Cause.PriceBound : why), (long)Math.Round(Math.Log(bounded / old) * 1e6));
             }
         }
 

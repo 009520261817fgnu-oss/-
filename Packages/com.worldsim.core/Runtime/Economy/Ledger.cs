@@ -44,6 +44,7 @@ namespace WorldSim.Core.Economy
         Tuition,
         Moving,
         Rent,
+        Medical,
     }
 
     /// <summary>Single path for every money movement; keeps per-day totals by flow for analysis.</summary>

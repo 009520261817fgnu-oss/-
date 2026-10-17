@@ -18,6 +18,8 @@ namespace WorldSim.Core.Economy
         public int Education;
         public bool Retired;
         public float Happiness = 0.6f;
+        /// <summary>0..1 (S2): worn by polluted air, age and hunger; restored by rest and clinics.</summary>
+        public float Health = Systems.HealthSystem.Initial;
         public float CommuteHours;
         public int UnemployedDays;
         /// <summary>Net income received yesterday (wage or pension after tax).</summary>

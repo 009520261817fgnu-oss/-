@@ -17,7 +17,7 @@ namespace WorldSim.Core.Simulation
         public int Population, LabourForce, Employed, Jobs, Vacancies, Retired, Children;
         public int CompaniesOpen, CompaniesClosed;
         public long Treasury, CompanyCash, HouseholdCash, TotalMoney;
-        public double AvgWage, AvgHappiness, AvgCommuteHours;
+        public double AvgWage, AvgHappiness, AvgCommuteHours, AvgHealth;
         public long Wages, RetailSales, B2BSales, Imports, Exports, Freight, Taxes, CompanyProfit;
         public int Births, Deaths, Immigrants, Emigrants, Moves;
         public readonly SortedDictionary<string, double> Production = new SortedDictionary<string, double>(StringComparer.Ordinal);
@@ -36,7 +36,7 @@ namespace WorldSim.Core.Simulation
         {
             "population", "unemployment", "treasury", "avgWage", "happiness", "retailSales", "wages", "taxes",
             "imports", "exports", "companyProfit", "companiesOpen", "traffic", "commute", "pollution",
-            "energyDemand", "energySupply", "research", "damaged", "temperature",
+            "energyDemand", "energySupply", "research", "damaged", "temperature", "health",
             "prod.grain", "prod.iron_ore", "prod.wood", "prod.steel", "prod.food", "prod.goods", "prod.services",
         };
 
@@ -64,6 +64,7 @@ namespace WorldSim.Core.Simulation
                 case "research": return ResearchPoints;
                 case "damaged": return DamagedBuildings + DamagedRoads;
                 case "temperature": return Temperature;
+                case "health": return AvgHealth * 100;
             }
             if (key.StartsWith("prod.", StringComparison.Ordinal))
                 return Production.TryGetValue(key.Substring(5), out double v) ? v : 0;
@@ -120,13 +121,14 @@ namespace WorldSim.Core.Simulation
             for (int x = 0; x < world.Width; x++)
                 if (world.IsRoadDamaged(new GridPos(x, z))) s.DamagedRoads++;
 
-            double happiness = 0, commute = 0;
+            double happiness = 0, commute = 0, health = 0;
             int commuters = 0;
             foreach (Citizen c in e.Citizens.Values)
             {
                 s.Population++;
                 s.HouseholdCash += c.Cash;
                 happiness += c.Happiness;
+                health += c.Health;
                 int age = c.AgeYears(today);
                 if (age < 18) s.Children++;
                 if (c.Retired) s.Retired++;
@@ -134,6 +136,7 @@ namespace WorldSim.Core.Simulation
                 if (c.JobId != 0) { s.Employed++; commute += c.CommuteHours; commuters++; }
             }
             s.AvgHappiness = s.Population == 0 ? 0 : happiness / s.Population;
+            s.AvgHealth = s.Population == 0 ? 0 : health / s.Population;
             s.AvgCommuteHours = commuters == 0 ? 0 : commute / commuters;
 
             double wageSum = 0;

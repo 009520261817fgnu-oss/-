@@ -5,7 +5,7 @@
 
 const ACTIVITY = { Idle: '自由', Sleeping: '睡眠中', Resting: '休憩中', Working: '仕事中', Studying: '職業訓練中', Travelling: '移動中' };
 const SCHEDULE = { Home: '自宅', Commute: '通勤中', Work: '仕事', Shopping: '買い物', School: '学校' };
-const FIXTURE_COLORS = { bed: 0x7fa7c9, fridge: 0xdfe6ea, sofa: 0xc98fd1, counter: 0xe8893a, workstation: 0x63bba3, jobboard: 0xe3b341, classroom: 0xb5c46a };
+const FIXTURE_COLORS = { treatment: 0xe2625a, bed: 0x7fa7c9, fridge: 0xdfe6ea, sofa: 0xc98fd1, counter: 0xe8893a, workstation: 0x63bba3, jobboard: 0xe3b341, classroom: 0xb5c46a };
 const EDU = ['義務教育', '高校・専門', '大学'];
 const WALK_SPEED = 4.5, RUN_SPEED = 11, EYE = 1.6;
 
@@ -343,7 +343,7 @@ const Life = {
     const head = `<header><b>${esc(s.name)}</b><span>${s.age}歳・${esc(s.job ? s.job.name : s.retired ? '退職' : '無職')}</span><span class="num">${esc(st.clock)}</span></header>
       <div class="needs">
         <label>所持金 <b class="num">${yen(s.cash)}</b></label>
-        <label>空腹 ${bar(s.hunger)}</label><label>体力 ${bar(s.energy)}</label>
+        <label>空腹 ${bar(s.hunger)}</label><label>体力 ${bar(s.energy)}</label><label>健康 ${bar(s.health)}</label>
         <label>${esc(ACTIVITY[s.activity])}・${where}</label>
       </div>`;
     const body = `<div class="acts">${acts.join('')}</div>${extra}${people}`;

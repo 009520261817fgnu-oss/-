@@ -357,7 +357,7 @@ namespace WorldSim.Web
                             ["job"] = sample.JobId != 0 && w.TryGetBuilding(sample.JobId, out Building jb) ? jb.Def.Name + " #" + jb.Id : (sample.Retired ? "退職" : "なし"),
                             ["income"] = (double)sample.LastNetIncome, ["savings"] = (double)sample.Cash,
                             ["happiness"] = (double)sample.Happiness, ["commute"] = sample.CommuteHours * 60.0,
-                            ["food"] = (double)sample.FoodMet, ["goods"] = (double)sample.GoodsMet,
+                            ["food"] = (double)sample.FoodMet, ["goods"] = (double)sample.GoodsMet, ["health"] = (double)sample.Health,
                         };
                 }
                 if (w.Economy.Companies.TryGetValue(b.Id, out Company co))

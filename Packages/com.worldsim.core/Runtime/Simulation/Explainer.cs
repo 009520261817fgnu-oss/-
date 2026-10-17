@@ -194,6 +194,7 @@ namespace WorldSim.Core.Simulation
                 case Cause.MovedCloserToWork: return "職場の近くへ転居";
                 case Cause.Evicted: return "家賃滞納で退去";
                 case Cause.MovedForCheaperRent: return "安い家賃の住まいへ転居";
+                case Cause.DiedOfIllness: return "健康悪化による死亡";
                 default: return "理由の記録なし";
             }
         }
@@ -228,6 +229,7 @@ namespace WorldSim.Core.Simulation
                 case Flow.Tuition: return "職業訓練の授業料";
                 case Flow.Moving: return "引っ越し費用";
                 case Flow.Rent: return "家賃";
+                case Flow.Medical: return "診察代";
                 default: return f.ToString();
             }
         }

@@ -45,8 +45,15 @@ namespace WorldSim.Core.Tests
                 "2-3: inputs were bought and products made");
             Assert.Greater(Sum(b, 30, s => s.Employed), Sum(a, 30, s => s.Employed), "4: employment rises");
             Assert.Greater(Sum(b, 30, s => s.Wages), Sum(a, 30, s => s.Wages), "4: wage income rises");
-            Assert.Greater(Sum(b, 30, s => s.RetailSales), Sum(a, 30, s => s.RetailSales) * 0.98, "5: consumption holds or rises");
-            Assert.Greater(Sum(b, 30, s => s.Taxes), Sum(a, 30, s => s.Taxes), "6: tax revenue rises");
+            // Local food production lowers food prices, so the same purchases can cost fewer yen; judge
+            // consumption by what households spent plus what they kept (S2 finding, see CAUSAL_FINDINGS).
+            Assert.Greater(Sum(b, 30, s => s.RetailSales) + b.History.Last().HouseholdCash,
+                (Sum(a, 30, s => s.RetailSales) + a.History.Last().HouseholdCash) * 0.98, "5: consumption holds or rises");
+            Assert.LessOrEqual(Sum(b, 30, s => s.Unmet.TryGetValue("food", out double fb) ? fb : 0),
+                Sum(a, 30, s => s.Unmet.TryGetValue("food", out double fa) ? fa : 0), "5: no more unmet food demand");
+            // Wages → income tax (cheaper food can lower retailers' profits and so corporate tax).
+            long IncomeTax(WorldState w) => w.Economy.Causes.Sum(CauseMetric.CityMoney, w.Clock.TotalDays - 29, w.Clock.TotalDays)[(int)Flow.IncomeTax];
+            Assert.Greater(IncomeTax(b), IncomeTax(a), "6: income tax revenue rises");
             Assert.GreaterOrEqual(b.History.Last().Population + 5, a.History.Last().Population, "6: population does not fall behind");
         }
 

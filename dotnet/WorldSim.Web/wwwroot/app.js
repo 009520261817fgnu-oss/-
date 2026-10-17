@@ -41,7 +41,7 @@ const SERIES = {
   happiness: ['満足度', ''], retailSales: ['小売売上', '円'], wages: ['賃金総額', '円'], taxes: ['税収', '円'],
   imports: ['輸入', '円'], exports: ['輸出', '円'], companyProfit: ['企業利益', '円'], companiesOpen: ['営業中の企業', '社'],
   traffic: ['交通量', '台'], commute: ['平均通勤', '分'], pollution: ['大気汚染', ''], energyDemand: ['電力需要', 'kWh'],
-  energySupply: ['電力供給', 'kWh'], research: ['研究ポイント', ''], damaged: ['被災箇所', ''], temperature: ['気温', '℃'],
+  energySupply: ['電力供給', 'kWh'], research: ['研究ポイント', ''], health: ['平均の健康', ''], damaged: ['被災箇所', ''], temperature: ['気温', '℃'],
   'prod.grain': ['穀物生産', ''], 'prod.iron_ore': ['鉄鉱石生産', ''], 'prod.wood': ['木材生産', ''], 'prod.steel': ['鋼材生産', ''],
   'prod.food': ['食品生産', ''], 'prod.goods': ['工業製品生産', ''], 'prod.services': ['サービス', ''],
 };
@@ -950,7 +950,7 @@ function renderInfo(el) {
           const p = b.sample;
           html += `<h4>住民の一人（#${p.id}）</h4>` + dl([['年齢', `${p.age}歳`], ['学歴', ['基礎', '中等', '高等'][p.education]], ['職場', esc(p.job)],
             ['昨日の手取り', yen(p.income)], ['貯蓄', yen(p.savings)], ['満足度', pct(p.happiness)], ['通勤', `${p.commute.toFixed(1)}分`],
-            ['食料の充足', pct(p.food)], ['工業製品の充足', pct(p.goods)]]);
+            ['食料の充足', pct(p.food)], ['工業製品の充足', pct(p.goods)], ['健康', pct(p.health)]]);
         }
       }
       if (co) {

@@ -177,7 +177,7 @@ namespace WorldSim.Core.Content
             return def;
         }
 
-        private static readonly string[] FixtureTypes = { "bed", "fridge", "sofa", "counter", "workstation", "jobboard", "classroom" };
+        private static readonly string[] FixtureTypes = { "bed", "fridge", "sofa", "counter", "workstation", "jobboard", "classroom", "treatment" };
 
         private static InteriorDef ParseInterior(IDictionary<string, object> o)
         {

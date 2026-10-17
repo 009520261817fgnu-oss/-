@@ -74,6 +74,7 @@ namespace WorldSim.Core.Systems
             double eff = w.Environment.EnergyRatio * b.Condition;
             eff *= 1 + w.Effects.ForCompany(co, "productivity");
             eff *= EducationFactor(w, co);
+            eff *= HealthSystem.ProductivityFactor(w, co);
             if (co.Def.Category == BuildingCategory.Agriculture)
                 eff *= Math.Max(0.3, Math.Min(1.2, 0.5 + w.Environment.SoilMoisture));
             if (co.Recipe != null && co.Recipe.Id == "harvest_wood")

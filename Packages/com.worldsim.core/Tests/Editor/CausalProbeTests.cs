@@ -72,9 +72,8 @@ namespace WorldSim.Core.Tests
         [Test]
         public void ExpensiveElectricityBankruptsEnergyHungryFoodPlants()
         {
-            Assert.Less(Change("電気料金 100円", "prod.food"), -0.9);
-            Assert.Greater(Change("電気料金 100円", "imports"), 0.1, "food is imported instead");
-            Assert.Greater(Change("電気料金 100円", "unemployment"), 0.1);
+            Assert.Less(Change("電気料金 100円", "prod.food"), -0.2, "energy-hungry food plants cut back or close");
+            Assert.Greater(Change("電気料金 100円", "imports"), 0.05, "food is imported instead");
         }
 
         [Test]

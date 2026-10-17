@@ -32,10 +32,11 @@ namespace WorldSim.Core.Systems
 
             List<Building> homes = ResidentialBuildings(w);
             Education(w, today);
+            HealthSystem.Update(w, today);
             UpdateHappiness(w, today);
 
             var leaving = new List<(Citizen c, Cause why)>();
-            var dying = new List<Citizen>();
+            var dying = new List<(Citizen c, Cause why)>();
             var newborns = new List<Citizen>();
             int player = w.Player.CitizenId;
             foreach (Citizen c in e.Citizens.Values)
@@ -47,7 +48,8 @@ namespace WorldSim.Core.Systems
                     if (c.JobId == 0 && !c.Retired && c.IsWorkingAge(today)) c.UnemployedDays++;
                     continue;
                 }
-                if (age >= 60 && rng.Chance(0.01 * Math.Exp((age - 60) / 8.0) / SimClock.DaysPerYear)) { dying.Add(c); continue; }
+                if (age >= 60 && rng.Chance(0.01 * Math.Exp((age - 60) / 8.0) / SimClock.DaysPerYear * HealthSystem.MortalityFactor(c))) { dying.Add((c, Cause.Died)); continue; }
+                if (c.Health < 0.25f && rng.Chance(0.003)) { dying.Add((c, Cause.DiedOfIllness)); continue; }
                 if (c.HomeId == 0)
                 {
                     c.UnemployedDays++;
@@ -59,12 +61,12 @@ namespace WorldSim.Core.Systems
                 if (age >= 20 && age <= 40 && c.HomeId != 0 && rng.Chance(BirthRatePerYear / SimClock.DaysPerYear)
                     && w.TryGetBuilding(c.HomeId, out Building h) && e.Residents(h.Id) < h.Def.Housing)
                 {
-                    newborns.Add(new Citizen { BirthDay = today, Education = 0, SchoolDays = 0, Happiness = c.Happiness, HomeId = c.HomeId });
+                    newborns.Add(new Citizen { BirthDay = today, Education = 0, SchoolDays = 0, Happiness = c.Happiness, HomeId = c.HomeId, Health = 1f });
                 }
                 if (c.JobId != 0 && c.CommuteHours > MoveCommuteHours && rng.Chance(MoveCheckShare)) MoveCloserToWork(w, c, homes);
                 else if (c.HomeId != 0 && HousingMarket.RentBurden(c) > 0.5 && rng.Chance(MoveCheckShare)) MoveForCheaperRent(w, c, homes);
             }
-            foreach (Citizen c in dying) { e.RemoveCitizen(c, e.City, Flow.Inheritance, Cause.Died); stats.Deaths++; }
+            foreach (var (c, why) in dying) { e.RemoveCitizen(c, e.City, Flow.Inheritance, why); stats.Deaths++; }
             foreach (var (c, why) in leaving) { e.RemoveCitizen(c, e.External, Flow.Migration, why); stats.Emigrants++; }
             foreach (Citizen b in newborns)
             {
@@ -272,6 +274,7 @@ namespace WorldSim.Core.Systems
                     t -= Math.Min(0.15, Math.Max(0, HousingMarket.RentBurden(c) - 0.3) * 0.5);
                 }
                 t -= (1 - energy) * 0.2;
+                t -= (1 - c.Health) * 0.2;
                 t = Math.Max(0, Math.Min(1, t));
                 c.Happiness += (float)((t - c.Happiness) * 0.1);
             }

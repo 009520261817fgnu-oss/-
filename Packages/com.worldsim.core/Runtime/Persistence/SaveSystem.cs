@@ -191,7 +191,7 @@ namespace WorldSim.Core.Persistence
                     c.Id, (double)c.Cash, (double)c.BirthDay, c.HomeId, c.JobId, c.Education, c.Retired,
                     (double)c.Happiness, (double)c.CommuteHours, c.UnemployedDays, (double)c.LastNetIncome,
                     (double)c.FoodMet, (double)c.GoodsMet, (double)c.ServicesMet, c.SchoolDays, c.TenureDays,
-                    Relations(c), (double)c.LastRent, c.RentArrearsDays,
+                    Relations(c), (double)c.LastRent, c.RentArrearsDays, (double)c.Health,
                 });
             var companies = new List<object>();
             foreach (Company co in e.Companies.Values)
@@ -282,6 +282,7 @@ namespace WorldSim.Core.Persistence
                 if (a.Count > 16 && a[16] is IDictionary<string, object> rel)
                     foreach (var kv in rel) c.AddAffinity(int.Parse(kv.Key, CultureInfo.InvariantCulture), (float)D(kv.Value));
                 if (a.Count > 18) { c.LastRent = (long)D(a[17]); c.RentArrearsDays = I(a[18]); }
+                if (a.Count > 19) c.Health = (float)D(a[19]);
                 e.Citizens.Add(c.Id, c);
                 e.MoveIn(c, I(a[3]));
             }
@@ -471,7 +472,7 @@ namespace WorldSim.Core.Persistence
             "avgWage", "avgHappiness", "avgCommute", "wages", "retail", "b2b", "imports", "exports", "freight", "taxes", "profit",
             "births", "deaths", "immigrants", "emigrants", "moves", "traffic", "congested",
             "energyDemand", "energySupply", "pollution", "temperature", "rain", "moisture", "research", "techs",
-            "damagedBuildings", "damagedRoads",
+            "damagedBuildings", "damagedRoads", "avgHealth",
         };
 
         private static double Get(StatsSnapshot s, string k)
@@ -493,6 +494,7 @@ namespace WorldSim.Core.Persistence
                 case "pollution": return s.AvgPollution; case "temperature": return s.Temperature; case "rain": return s.Rain;
                 case "moisture": return s.SoilMoisture; case "research": return s.ResearchPoints; case "techs": return s.TechsCompleted;
                 case "damagedBuildings": return s.DamagedBuildings; case "damagedRoads": return s.DamagedRoads;
+                case "avgHealth": return s.AvgHealth;
                 default: throw new ArgumentException(k);
             }
         }
@@ -517,6 +519,7 @@ namespace WorldSim.Core.Persistence
                 case "pollution": s.AvgPollution = v; break; case "temperature": s.Temperature = v; break; case "rain": s.Rain = v; break;
                 case "moisture": s.SoilMoisture = v; break; case "research": s.ResearchPoints = v; break; case "techs": s.TechsCompleted = (int)v; break;
                 case "damagedBuildings": s.DamagedBuildings = (int)v; break; case "damagedRoads": s.DamagedRoads = (int)v; break;
+                case "avgHealth": s.AvgHealth = v; break;
             }
         }
 

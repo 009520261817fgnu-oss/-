@@ -39,16 +39,21 @@ namespace WorldSim.Core.Tests
         [Test]
         public void LayoffsPointAtTheCompanyResponsible()
         {
-            WorldState w = Town(40);
-            Company plant = w.Economy.Companies.Values.Where(c => !c.IsPublic && c.Workers.Count >= 5).OrderBy(c => c.BuildingId).First();
-            w.TryGetBuilding(plant.BuildingId, out Building b);
+            // A village whose only employer is demolished: nobody can be rehired elsewhere. (In a town
+            // with vacancies people may be rehired before the day closes, and are rightly not counted.)
+            WorldState w = TestContent.Village(6, outsideRoad: true);
+            int factory = TestContent.PlaceSouth(w, "factory", 20);
+            var r = WorldFactory.CreateRunner(w);
+            r.StepMany(5 * SimClock.TicksPerDay);
+            Assert.Greater(w.Economy.Companies[factory].Workers.Count, 0);
+            w.TryGetBuilding(factory, out Building b);
             new BulldozeCommand(b.Origin).Execute(w);
-            WorldFactory.CreateRunner(w).StepMany(2 * SimClock.TicksPerDay);
+            r.StepMany(2 * SimClock.TicksPerDay);
             Explanation x = Explainer.Explain(w, "unemployment", 3);
             Contribution demolished = x.Parts.FirstOrDefault(p => p.Label == Explainer.CauseLabel(Economy.Cause.Demolished));
-            Assert.IsNotNull(demolished, "demolition appears as a cause");
+            Assert.IsNotNull(demolished, "demolition appears as a cause: " + string.Join(", ", x.Parts.Select(p => p.Label + " " + p.Value)));
             Assert.Greater(demolished.Value, 0, "it raised unemployment");
-            Assert.AreEqual(plant.BuildingId, demolished.Agents.First().id, "and points at the demolished company");
+            Assert.AreEqual(factory, demolished.Agents.First().id, "and points at the demolished company");
         }
 
         [Test]

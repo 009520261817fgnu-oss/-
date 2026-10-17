@@ -238,6 +238,16 @@ namespace WorldSim.Core.People
                     int h = w.Clock.HourOfDay;
                     return CommandResult.Ok(h >= AvatarSystem.WorkStartHour && h < AvatarSystem.WorkEndHour
                         ? "働き始めました" : "働き始めました（勤務時間は8〜18時。時間外は記録されません）");
+                case "treatment":
+                {
+                    // A visit: the fee goes to the city's clinic; health recovers by a few days' worth of care.
+                    long fee = 3000;
+                    if (self.Cash < fee) return CommandResult.Fail($"診察代（{fee:N0}円）が足りません");
+                    w.Economy.Ledger.Transfer(self, w.Economy.City, fee, Flow.Medical);
+                    self.Health = Math.Min(1f, self.Health + (float)Systems.HealthSystem.ClinicRecovery * 5);
+                    p.Activity = AvatarActivity.Resting;
+                    return CommandResult.Ok($"診察を受けました（{fee:N0}円）。健康 {self.Health * 100:0}%");
+                }
                 case "classroom":
                     if (self.Education >= 2) return CommandResult.Fail("これ以上の訓練はありません");
                     p.Activity = AvatarActivity.Studying;

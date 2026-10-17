@@ -73,6 +73,9 @@ const check = (name, ok, extra) => { console.log((ok ? 'PASS ' : 'FAIL ') + name
   check('build list has construction company and clinic', await ev(`$('#drawer').textContent.includes('建設会社') && $('#drawer').textContent.includes('診療所')`));
   await ev(`showTab('policy')`);
   check('rent policy slider', await ev(`$('#panelBody').textContent.includes('家賃')`));
+  check('S3 policy switches', await ev(`$('#panelBody').textContent.includes('民間投資') && $('#panelBody').textContent.includes('自治体の自動運営')`));
+  const gov = await ev(`JSON.parse(api('Execute', JSON.stringify({type:'policy', key:'autoGovernment', value:1})))`);
+  check('city government can be switched on', gov.ok, gov.msg);
   const home = await ev(`(() => { for (const b of JSON.parse(api('GetBuildings'))) { const i = JSON.parse(api('Inspect', b[2], b[3])); if (i && i.building && i.building.housing) return { x: b[2], z: b[3] }; } return null; })()`);
   await ev(`inspectAt({ x: ${home.x}, z: ${home.z} })`);
   await page.waitForTimeout(200);

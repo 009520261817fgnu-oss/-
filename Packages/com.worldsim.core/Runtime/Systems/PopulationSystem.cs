@@ -15,7 +15,9 @@ namespace WorldSim.Core.Systems
     {
         public const int SchoolYears = 12;
         public const double BirthRatePerYear = 0.05;
-        public const double MoveCheckShare = 0.01;
+        public const double MoveCheckShare = 0.02;
+        /// <summary>Residents commuting longer than this occasionally look for a closer home.</summary>
+        public const float MoveCommuteHours = 0.2f;
 
         public string Name => "Population";
         public int IntervalTicks => SimClock.TicksPerDay;
@@ -52,7 +54,7 @@ namespace WorldSim.Core.Systems
                 {
                     newborns.Add(new Citizen { BirthDay = today, Education = 0, SchoolDays = 0, Happiness = c.Happiness, HomeId = c.HomeId });
                 }
-                if (c.JobId != 0 && c.CommuteHours > 0.3f && rng.Chance(MoveCheckShare)) MoveCloserToWork(w, c, homes);
+                if (c.JobId != 0 && c.CommuteHours > MoveCommuteHours && rng.Chance(MoveCheckShare)) MoveCloserToWork(w, c, homes);
             }
             foreach (Citizen c in dying) { e.RemoveCitizen(c, e.City, Flow.Inheritance); stats.Deaths++; }
             foreach (Citizen c in leaving) { e.RemoveCitizen(c, e.External, Flow.Migration); stats.Emigrants++; }
@@ -112,7 +114,7 @@ namespace WorldSim.Core.Systems
         {
             float current = w.Network.TravelHours(c.HomeId, c.JobId);
             Building best = null;
-            float bestH = current - 0.1f;
+            float bestH = current - 0.05f;
             foreach (Building b in homes)
             {
                 if (b.Id == c.HomeId || !Habitable(w, b)) continue;

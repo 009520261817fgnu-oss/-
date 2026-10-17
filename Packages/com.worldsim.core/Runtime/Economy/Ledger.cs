@@ -40,6 +40,7 @@ namespace WorldSim.Core.Economy
         Divestment,
         Preparedness,
         Dividends,
+        Benefit,
     }
 
     /// <summary>Single path for every money movement; keeps per-day totals by flow for analysis.</summary>

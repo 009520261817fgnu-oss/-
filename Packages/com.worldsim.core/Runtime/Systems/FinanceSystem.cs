@@ -57,11 +57,11 @@ namespace WorldSim.Core.Systems
             }
 
             long today = w.Clock.TotalDays;
-            foreach (Citizen c in e.Citizens.Values)
+                        foreach (Citizen c in e.Citizens.Values)
             {
-                if (!c.Retired) continue;
-                long paid = l.TransferUpTo(e.City, c, p.PensionPerDay, Flow.Pension);
-                c.LastNetIncome = paid;
+                if (c.Retired) c.LastNetIncome = l.TransferUpTo(e.City, c, p.PensionPerDay, Flow.Pension);
+                else if (c.JobId == 0 && c.HomeId != 0 && c.IsWorkingAge(today))
+                    c.LastNetIncome = l.TransferUpTo(e.City, c, p.UnemploymentBenefit, Flow.Benefit);
             }
 
             foreach (Company co in e.Companies.Values)
@@ -97,8 +97,8 @@ namespace WorldSim.Core.Systems
         }
 
         /// <summary>
-        /// Companies distribute part of their cash above an operating reserve: half to outside owners,
-        /// half to local adult residents as shareholders, so profits return to household income.
+        /// Companies distribute part of their cash above an operating reserve to local adult residents
+        /// (the shareholders), so profits return to household income and spending.
         /// </summary>
         private static void PayDividends(WorldState w)
         {
@@ -111,10 +111,8 @@ namespace WorldSim.Core.Systems
                 long reserve = EconomyState.CompanyStartCapital + 30L * co.Wage * Math.Max(1, co.Workers.Count);
                 if (co.Cash <= reserve) continue;
                 long payout = (co.Cash - reserve) / DividendDivisor;
-                long outside = payout / 2;
-                e.Ledger.Transfer(co, e.External, outside, Flow.Dividends);
-                e.Ledger.Transfer(co, e.City, payout - outside, Flow.Dividends); // held briefly for distribution
-                pool += payout - outside;
+                e.Ledger.Transfer(co, e.City, payout, Flow.Dividends); // held briefly for distribution
+                pool += payout;
             }
             if (pool <= 0) return;
             var adults = new List<Citizen>();

@@ -22,6 +22,8 @@ namespace WorldSim.Core.Simulation
         public int Births, Deaths, Immigrants, Emigrants, Moves;
         public readonly SortedDictionary<string, double> Production = new SortedDictionary<string, double>(StringComparer.Ordinal);
         public readonly SortedDictionary<string, double> Prices = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly SortedDictionary<string, double> Imported = new SortedDictionary<string, double>(StringComparer.Ordinal);
+        public readonly SortedDictionary<string, double> Unmet = new SortedDictionary<string, double>(StringComparer.Ordinal);
         public double TrafficTotal, CongestedCells;
         public double EnergyDemand, EnergySupply, AvgPollution, Temperature, Rain, SoilMoisture;
         public double ResearchPoints;
@@ -164,6 +166,8 @@ namespace WorldSim.Core.Simulation
             s.Moves = e.Daily.Moves;
             foreach (var kv in e.Market.Produced) s.Production[kv.Key] = kv.Value;
             foreach (var kv in e.Market.Price) s.Prices[kv.Key] = kv.Value;
+            foreach (var kv in e.Market.Imported) s.Imported[kv.Key] = kv.Value;
+            foreach (var kv in e.Market.Unmet) s.Unmet[kv.Key] = kv.Value;
 
             foreach (float v in world.TrafficVolume)
             {

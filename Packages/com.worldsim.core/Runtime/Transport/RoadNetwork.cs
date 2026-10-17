@@ -12,13 +12,18 @@ namespace WorldSim.Core.Transport
     /// </summary>
     public sealed class RoadNetwork
     {
-        public const float BaseSpeedKmh = 25f;
+        /// <summary>
+        /// Effective door-to-door urban speed including signals, stops and parking searches. The
+        /// prototype map is only ~1.3 km across, so this keeps commutes in the 5-20 minute range
+        /// where routes, detours and congestion matter.
+        /// </summary>
+        public const float BaseSpeedKmh = 6f;
         /// <summary>Fixed time for parking, loading and walking at each end of a trip.</summary>
-        public const float TripOverheadHours = 0.05f;
+        public const float TripOverheadHours = 0.03f;
         /// <summary>Travel time from the map edge to the nearest outside market.</summary>
         public const float OutsideHours = 1.0f;
         /// <summary>Vehicles per day a road cell carries before congestion grows quickly.</summary>
-        public const float CellCapacityPerDay = 6000f;
+        public const float CellCapacityPerDay = 3000f;
 
         private readonly WorldState _w;
         private bool _dirty = true;

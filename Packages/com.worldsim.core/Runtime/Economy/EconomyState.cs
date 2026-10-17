@@ -16,11 +16,13 @@ namespace WorldSim.Core.Economy
         /// <summary>Maximum yen per day spent on repairing damage.</summary>
         public long RepairBudget = 5_000_000;
         public long PensionPerDay = 1500;
+        /// <summary>Yen per day paid to unemployed working-age residents.</summary>
+        public long UnemploymentBenefit = 2500;
         /// <summary>Yen per kWh paid by consumers to power companies.</summary>
         public double ElectricityPrice = 25;
 
         public static readonly string[] Keys =
-            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "electricityPrice" };
+            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "unemploymentBenefit", "electricityPrice" };
 
         public double Get(string key)
         {
@@ -32,6 +34,7 @@ namespace WorldSim.Core.Economy
                 case "preparedness": return PreparednessBudget;
                 case "repairBudget": return RepairBudget;
                 case "pension": return PensionPerDay;
+                case "unemploymentBenefit": return UnemploymentBenefit;
                 case "electricityPrice": return ElectricityPrice;
                 default: throw new ArgumentException($"Unknown policy '{key}'");
             }
@@ -49,6 +52,7 @@ namespace WorldSim.Core.Economy
                 case "preparedness": if (v < 0 || v > 20_000_000) return "防災投資は0〜2,000万円/日"; PreparednessBudget = (long)v; return null;
                 case "repairBudget": if (v < 0 || v > 50_000_000) return "復旧予算は0〜5,000万円/日"; RepairBudget = (long)v; return null;
                 case "pension": if (v < 0 || v > 20000) return "年金は0〜20,000円/日"; PensionPerDay = (long)v; return null;
+                case "unemploymentBenefit": if (v < 0 || v > 20000) return "失業手当は0〜20,000円/日"; UnemploymentBenefit = (long)v; return null;
                 case "electricityPrice": if (v < 5 || v > 100) return "電気料金は5〜100円/kWh"; ElectricityPrice = v; return null;
                 default: return $"未知の政策 '{key}'";
             }

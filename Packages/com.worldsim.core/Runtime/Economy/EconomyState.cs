@@ -139,6 +139,10 @@ namespace WorldSim.Core.Economy
         public readonly Market Market = new Market();
         public readonly Ledger Ledger = new Ledger();
         public readonly DailyCounters Daily = new DailyCounters();
+        /// <summary>Why things changed (S1): noted by the systems, totalled per day.</summary>
+        public readonly CauseLog Causes = new CauseLog();
+
+        public EconomyState() { Ledger.Causes = Causes; }
 
         public int Population => Citizens.Count;
 
@@ -172,28 +176,31 @@ namespace WorldSim.Core.Economy
             if (homeId != 0) Occupancy[homeId] = Residents(homeId) + 1;
         }
 
-        public void Hire(Company co, Citizen c)
+        public void Hire(Company co, Citizen c, Cause cause = Cause.Hired)
         {
             if (c.JobId != 0) Fire(c);
+            Causes.Note(c.Id, cause, co.BuildingId);
             co.Workers.Add(c.Id);
             c.JobId = co.BuildingId;
             c.UnemployedDays = 0;
             c.TenureDays = 0;
         }
 
-        public void Fire(Citizen c)
+        public void Fire(Citizen c, Cause cause = Cause.Unspecified)
         {
+            if (cause != Cause.Unspecified) Causes.Note(c.Id, cause, c.JobId);
             if (c.JobId != 0 && Companies.TryGetValue(c.JobId, out Company co)) co.Workers.Remove(c.Id);
             c.JobId = 0;
         }
 
         /// <summary>Removes a citizen from the world; savings go to <paramref name="heir"/>.</summary>
-        public void RemoveCitizen(Citizen c, Account heir, Flow flow)
+        public void RemoveCitizen(Citizen c, Account heir, Flow flow, Cause cause = Cause.Unspecified)
         {
-            Fire(c);
+            Fire(c, cause);
             MoveIn(c, 0);
             Ledger.Transfer(c, heir, c.Cash, flow);
             Citizens.Remove(c.Id);
+            Causes.Gone.Add(c.Id);
         }
     }
 }

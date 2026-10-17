@@ -62,6 +62,7 @@ namespace WorldSim.Core.People
             };
             w.Economy.Citizens.Add(c.Id, c);
             w.Economy.MoveIn(c, home.Id);
+            w.Economy.Causes.Note(c.Id, Cause.PlayerCreated, home.Id);
             w.Economy.Ledger.Transfer(w.Economy.External, c, 300_000, Flow.Migration);
             w.Log("人生", $"{Names.Of(c.Id)}（{Age}歳）が町に引っ越してきました");
             return new PossessCitizenCommand(c.Id).Execute(w);
@@ -309,7 +310,7 @@ namespace WorldSim.Core.People
         public CommandResult Execute(WorldState w, Citizen self)
         {
             if (self.JobId == 0) return CommandResult.Fail("仕事に就いていません");
-            w.Economy.Fire(self);
+            w.Economy.Fire(self, Cause.QuitByChoice);
             if (w.Player.Activity == AvatarActivity.Working) w.Player.Activity = AvatarActivity.Idle;
             return CommandResult.Ok("退職しました");
         }

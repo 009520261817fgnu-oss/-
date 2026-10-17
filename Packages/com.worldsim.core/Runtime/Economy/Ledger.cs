@@ -51,6 +51,8 @@ namespace WorldSim.Core.Economy
         public static readonly int FlowCount = Enum.GetValues(typeof(Flow)).Length;
 
         public long[] Today = new long[FlowCount];
+        /// <summary>Where net money movements are booked by sector and flow (set by EconomyState).</summary>
+        public CauseLog Causes;
         public long[] Yesterday = new long[FlowCount];
 
         public void Transfer(Account from, Account to, long amount, Flow flow)
@@ -59,6 +61,15 @@ namespace WorldSim.Core.Economy
             from.Cash -= amount;
             to.Cash += amount;
             Today[(int)flow] += amount;
+            if (Causes != null)
+            {
+                int a = CauseLog.SectorIndex(SectorOf(from)), b = CauseLog.SectorIndex(SectorOf(to));
+                if (a != b)
+                {
+                    Causes.Money[a, (int)flow] -= amount;
+                    Causes.Money[b, (int)flow] += amount;
+                }
+            }
         }
 
         /// <summary>Transfers up to the payer's cash (never below zero). Returns the amount moved.</summary>
@@ -78,5 +89,8 @@ namespace WorldSim.Core.Economy
         }
 
         public long YesterdayOf(Flow f) => Yesterday[(int)f];
+
+        public static CauseMetric SectorOf(Account a) =>
+            a is Citizen ? CauseMetric.HouseholdMoney : a is Company ? CauseMetric.CompanyMoney : a is City ? CauseMetric.CityMoney : CauseMetric.ExternalMoney;
     }
 }

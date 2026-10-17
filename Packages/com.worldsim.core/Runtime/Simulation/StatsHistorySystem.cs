@@ -98,6 +98,7 @@ namespace WorldSim.Core.Simulation
                 }
                 co.SalesToday.Clear();
             }
+            e.Causes.CloseDay(e, w.Clock.TotalDays);
             e.Ledger.EndDay();
             e.Market.ClearDaily();
             w.Trips.Clear();

@@ -63,6 +63,8 @@ namespace WorldSim.Core.Economy
 
         public long Wage;
         public int TargetWorkers;
+        /// <summary>Why the last weekly staffing decision cut jobs (used to label the layoffs).</summary>
+        public Cause TargetCause;
         /// <summary>Employee citizen ids in hiring order (last hired is first fired).</summary>
         public readonly List<int> Workers = new List<int>();
         public readonly SortedDictionary<string, double> Inventory = new SortedDictionary<string, double>(StringComparer.Ordinal);

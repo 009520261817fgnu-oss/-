@@ -146,7 +146,7 @@ namespace WorldSim.Core.Systems
                 else p.AbsenceDays = 0;
                 if (p.AbsenceDays >= MaxAbsenceDays && w.Economy.Companies.TryGetValue(player.JobId, out Company co))
                 {
-                    w.Economy.Fire(player);
+                    w.Economy.Fire(player, Cause.Absence);
                     p.AbsenceDays = 0;
                     w.Log("人生", $"{People.Names.Of(player.Id)}は無断欠勤が続き、{co.Def.Name}を解雇されました");
                 }
@@ -158,7 +158,9 @@ namespace WorldSim.Core.Systems
         {
             EconomyState e = w.Economy;
             foreach (int id in co.Workers.ToArray())
-                if (e.Citizens.TryGetValue(id, out Citizen c)) e.Fire(c);
+                if (e.Citizens.TryGetValue(id, out Citizen c)) e.Fire(c, Cause.Bankruptcy);
+            e.Causes.Note(0, Cause.Bankruptcy, co.BuildingId);
+            e.Causes.Book(CauseMetric.CompaniesClosed, (int)Cause.Bankruptcy, 1);
             co.Closed = true;
             co.ClosedDays = 0;
             co.TargetWorkers = 0;
@@ -185,6 +187,8 @@ namespace WorldSim.Core.Systems
             co.Wage = EconomyState.BaseWage;
             co.TargetWorkers = Math.Max(1, co.Def.Jobs / 2);
             e.Ledger.Transfer(e.External, co, EconomyState.CompanyStartCapital, Flow.Investment);
+            e.Causes.Note(0, Cause.Reopened, co.BuildingId);
+            e.Causes.Book(CauseMetric.CompaniesReopened, (int)Cause.Reopened, 1);
             w.Log("再開", $"{co.Def.Name} #{co.BuildingId} が新たな出資を受けて営業を再開しました");
         }
     }

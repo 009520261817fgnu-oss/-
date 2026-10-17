@@ -34,7 +34,7 @@ namespace WorldSim.Core.Systems
             Education(w, today);
             UpdateHappiness(w, today);
 
-            var leaving = new List<Citizen>();
+            var leaving = new List<(Citizen c, Cause why)>();
             var dying = new List<Citizen>();
             var newborns = new List<Citizen>();
             int player = w.Player.CitizenId;
@@ -51,11 +51,11 @@ namespace WorldSim.Core.Systems
                 if (c.HomeId == 0)
                 {
                     c.UnemployedDays++;
-                    if (!FindHome(w, c, homes) && c.UnemployedDays > 14) { leaving.Add(c); continue; }
+                    if (!FindHome(w, c, homes) && c.UnemployedDays > 14) { leaving.Add((c, Cause.EmigratedHomeless)); continue; }
                 }
                 if (c.JobId == 0 && !c.Retired && c.IsWorkingAge(today)) c.UnemployedDays++;
-                if (c.Happiness < 0.3f && rng.Chance(0.01)) { leaving.Add(c); continue; }
-                if (c.JobId == 0 && c.UnemployedDays > 30 && c.IsWorkingAge(today) && rng.Chance(0.03)) { leaving.Add(c); continue; }
+                if (c.Happiness < 0.3f && rng.Chance(0.01)) { leaving.Add((c, Cause.EmigratedUnhappy)); continue; }
+                if (c.JobId == 0 && c.UnemployedDays > 30 && c.IsWorkingAge(today) && rng.Chance(0.03)) { leaving.Add((c, Cause.EmigratedUnemployed)); continue; }
                 if (age >= 20 && age <= 40 && c.HomeId != 0 && rng.Chance(BirthRatePerYear / SimClock.DaysPerYear)
                     && w.TryGetBuilding(c.HomeId, out Building h) && e.Residents(h.Id) < h.Def.Housing)
                 {
@@ -63,8 +63,8 @@ namespace WorldSim.Core.Systems
                 }
                 if (c.JobId != 0 && c.CommuteHours > MoveCommuteHours && rng.Chance(MoveCheckShare)) MoveCloserToWork(w, c, homes);
             }
-            foreach (Citizen c in dying) { e.RemoveCitizen(c, e.City, Flow.Inheritance); stats.Deaths++; }
-            foreach (Citizen c in leaving) { e.RemoveCitizen(c, e.External, Flow.Migration); stats.Emigrants++; }
+            foreach (Citizen c in dying) { e.RemoveCitizen(c, e.City, Flow.Inheritance, Cause.Died); stats.Deaths++; }
+            foreach (var (c, why) in leaving) { e.RemoveCitizen(c, e.External, Flow.Migration, why); stats.Emigrants++; }
             foreach (Citizen b in newborns)
             {
                 if (!w.TryGetBuilding(b.HomeId, out Building hb) || e.Residents(b.HomeId) >= hb.Def.Housing) continue;
@@ -73,6 +73,7 @@ namespace WorldSim.Core.Systems
                 b.HomeId = 0;
                 e.Citizens.Add(b.Id, b);
                 e.MoveIn(b, home);
+                e.Causes.Note(b.Id, Cause.Born, home);
                 stats.Births++;
             }
             Immigrate(w, today, homes);
@@ -130,6 +131,7 @@ namespace WorldSim.Core.Systems
             }
             if (best == null) return;
             w.Economy.MoveIn(c, best.Id);
+            w.Economy.Causes.Note(c.Id, Cause.MovedCloserToWork, best.Id);
             c.CommuteHours = bestH;
             w.Economy.Daily.Moves++;
         }
@@ -146,7 +148,8 @@ namespace WorldSim.Core.Systems
             double avgHappiness = AverageHappiness(e);
             double unemployment = UnemploymentRate(w, today);
             // Newcomers follow job openings; spare housing attracts a trickle only while jobs are easy to find.
-            double expected = vacancies * 0.15
+            double forJobs = vacancies * 0.15;
+            double expected = forJobs
                 + vacantHomes * 0.005 * Math.Max(0, (avgHappiness - 0.45) * 4) * Math.Max(0, 1 - unemployment * 8);
             int n = (int)Math.Floor(expected);
             if (w.Random.Chance(expected - n)) n++;
@@ -164,6 +167,8 @@ namespace WorldSim.Core.Systems
                 e.Citizens.Add(c.Id, c);
                 e.Ledger.Transfer(e.External, c, w.Random.NextInt(100_000, 400_000), Flow.Migration);
                 if (!FindHome(w, c, homes)) { e.RemoveCitizen(c, e.External, Flow.Migration); break; }
+                // Label arrivals by which pull brought them: job openings first, then spare housing.
+                e.Causes.Note(c.Id, (i + 0.5) / n <= forJobs / expected ? Cause.ImmigratedForJobs : Cause.ImmigratedForHousing, c.HomeId);
                 e.Daily.Immigrants++;
             }
         }

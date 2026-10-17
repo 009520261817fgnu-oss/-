@@ -347,13 +347,13 @@ namespace WorldSim.Core.World
             if (e.Companies.TryGetValue(b.Id, out Company co))
             {
                 foreach (int cid in co.Workers.ToArray())
-                    if (e.Citizens.TryGetValue(cid, out Citizen c)) e.Fire(c);
+                    if (e.Citizens.TryGetValue(cid, out Citizen c)) e.Fire(c, Cause.Demolished);
                 e.Ledger.Transfer(co, e.External, co.Cash, Flow.Divestment);
                 e.Companies.Remove(b.Id);
             }
             if (e.Residents(b.Id) > 0)
                 foreach (Citizen c in e.Citizens.Values)
-                    if (c.HomeId == b.Id) e.MoveIn(c, 0);
+                    if (c.HomeId == b.Id) { e.Causes.Note(c.Id, Cause.Demolished, b.Id); e.MoveIn(c, 0); }
             e.Occupancy.Remove(b.Id);
         }
 
@@ -497,7 +497,11 @@ namespace WorldSim.Core.World
 
         // ---------------------------------------------------------------- time & hashing
 
-        internal void AdvanceClock() => Clock.Tick++;
+        internal void AdvanceClock()
+        {
+            Clock.Tick++;
+            Economy.Causes.Now = Clock.Tick;
+        }
 
         /// <summary>Fingerprint of the full play state, for determinism and save/load tests.</summary>
         public ulong ComputeHash()

@@ -36,7 +36,7 @@ namespace WorldSim.Core.Systems
                 if (!c.Retired && c.AgeYears(today) >= 65)
                 {
                     c.Retired = true;
-                    e.Fire(c);
+                    e.Fire(c, Cause.Retirement);
                 }
             }
 
@@ -48,12 +48,14 @@ namespace WorldSim.Core.Systems
                 else if (co.IsPublic || co.PowerOutput > 0) co.TargetWorkers = cap;
                 else if (weekly) co.TargetWorkers = DecideTarget(co, cap);
                 co.TargetWorkers = Math.Min(co.TargetWorkers, cap);
+                Cause why = co.Closed ? Cause.Bankruptcy : co.Workers.Count > cap ? Cause.Automation
+                    : co.IsPublic || co.PowerOutput > 0 ? Cause.PublicStaffing : co.TargetCause;
                 while (co.Workers.Count > co.TargetWorkers)
                 {
                     int last = co.Workers[co.Workers.Count - 1];
                     if (e.Citizens.TryGetValue(last, out Citizen c))
                     {
-                        e.Fire(c);
+                        e.Fire(c, why);
                         if (c.Id == w.Player.CitizenId)
                             w.Log("人生", $"{People.Names.Of(c.Id)}は{co.Def.Name}の人員削減で解雇されました");
                     }
@@ -87,10 +89,10 @@ namespace WorldSim.Core.Systems
                 // Retailers staff to sales: grow while selling out, shrink while losing money.
                 understocked = !losing;
             }
-            if (co.InputShortage && losing) return Math.Max(1, t - step);
-            if (overstocked && losing) return Math.Max(1, t - step);
+            if (co.InputShortage && losing) { co.TargetCause = Cause.InputShortageDownsizing; return Math.Max(1, t - step); }
+            if (overstocked && losing) { co.TargetCause = Cause.OverstockDownsizing; return Math.Max(1, t - step); }
             if (understocked && co.ProfitAvg >= 0) return Math.Min(cap, t + step);
-            if (losing && co.Cash < co.Wage * co.Workers.Count * 7) return Math.Max(1, t - step);
+            if (losing && co.Cash < co.Wage * co.Workers.Count * 7) { co.TargetCause = Cause.CashShortDownsizing; return Math.Max(1, t - step); }
             return t;
         }
 
@@ -130,7 +132,7 @@ namespace WorldSim.Core.Systems
                     if (u > bestUtility) { bestUtility = u; best = co; bestHours = h; }
                 }
                 if (best == null) continue;
-                e.Hire(best, c);
+                e.Hire(best, c, c.JobId != 0 ? Cause.SwitchedForBetterPay : Cause.Hired);
                 c.CommuteHours = bestHours;
                 if (best.Workers.Count >= best.TargetWorkers) vacancies.Remove(best);
             }

@@ -23,16 +23,24 @@ namespace WorldSim.Core.Systems
         public void Tick(WorldState w)
         {
             Market m = w.Economy.Market;
+            CauseLog log = w.Economy.Causes;
+            int index = -1;
             foreach (ResourceDef r in w.Content.Resources)
             {
+                index++;
                 double produced = Get(m.Produced, r.Id);
                 double shortage = Get(m.Unmet, r.Id) + Get(m.Imported, r.Id);
                 double surplus = Get(m.Exported, r.Id);
                 double scale = Math.Max(1, produced + Get(m.LocalTraded, r.Id));
-                double p = m.GetPrice(r.Id);
-                if (shortage > 0.05 * scale) p *= 1 + Step;
-                else if (surplus > 0.05 * scale) p *= 1 - Step;
-                m.Price[r.Id] = Math.Max(r.BasePrice * MinFactor, Math.Min(r.BasePrice * MaxFactor, p));
+                double old = m.GetPrice(r.Id), p = old;
+                Cause why = Cause.Unspecified;
+                if (shortage > 0.05 * scale) { p *= 1 + Step; why = Get(m.Unmet, r.Id) >= Get(m.Imported, r.Id) ? Cause.PriceShortage : Cause.PriceImports; }
+                else if (surplus > 0.05 * scale) { p *= 1 - Step; why = Cause.PriceSurplus; }
+                double bounded = Math.Max(r.BasePrice * MinFactor, Math.Min(r.BasePrice * MaxFactor, p));
+                m.Price[r.Id] = bounded;
+                // Book the move in log units so daily moves add up exactly to the change over any period.
+                if (why != Cause.Unspecified) log.Book(CauseMetric.PriceLog, index * 64 + (int)why, (long)Math.Round(Math.Log(p / old) * 1e6));
+                if (bounded != p) log.Book(CauseMetric.PriceLog, index * 64 + (int)Cause.PriceBound, (long)Math.Round(Math.Log(bounded / p) * 1e6));
             }
         }
 
@@ -80,7 +88,7 @@ namespace WorldSim.Core.Systems
                     if (c.JobId != 0 && c.HomeId != 0)
                     {
                         float h = w.Network.TravelHours(c.HomeId, c.JobId);
-                        if (float.IsPositiveInfinity(h) || h > LaborSystem.MaxCommuteHours * 1.5f) e.Fire(c);
+                        if (float.IsPositiveInfinity(h) || h > LaborSystem.MaxCommuteHours * 1.5f) e.Fire(c, Cause.CommuteTooLong);
                         else c.CommuteHours = h;
                     }
             }

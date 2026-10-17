@@ -20,7 +20,7 @@ namespace WorldSim.Core.Persistence
     {
         public const string Format = "WorldSim.Save";
         /// <summary>2: adds the controlled resident (life mode), tenure and relationships. 1 still loads.</summary>
-        public const int Version = 2;
+        public const int Version = 3;
 
         public static string Save(WorldState w)
         {
@@ -50,6 +50,7 @@ namespace WorldSim.Core.Persistence
                 ["trips"] = Trips(w),
                 ["history"] = HistoryCodec.Encode(w.History),
                 ["player"] = Player(w.Player),
+                ["causes"] = Causes(w.Economy.Causes),
             };
             return Json.Serialize(root);
         }
@@ -96,12 +97,70 @@ namespace WorldSim.Core.Persistence
             }
             w.History.AddRange(HistoryCodec.Decode(Obj(root, "history")));
             if (version >= 2) LoadPlayer(w, Obj(root, "player"));
+            // Rebuilding the world moved money through the ledger (start funds, company capital); those are
+            // not real flows of the saved day, so they must not reach the cause record.
+            Array.Clear(w.Economy.Causes.Money, 0, w.Economy.Causes.Money.Length);
+            if (version >= 3) LoadCauses(w.Economy.Causes, Obj(root, "causes"));
             w.RestoreNextId(root.GetInt("nextId"));
             return w;
         }
 
         /// <summary>Independent deep copy via save/load: the basis of history branching.</summary>
         public static WorldState Clone(WorldState w) => Load(w.Content, Save(w));
+
+        // ------------------------------------------------------------------ causes (v3)
+
+        private static Dictionary<string, object> Causes(CauseLog c)
+        {
+            List<object> Notes(IEnumerable<CauseNote> notes)
+            {
+                var l = new List<object>();
+                foreach (CauseNote n in notes) { l.Add((double)n.Tick); l.Add(n.Citizen); l.Add((int)n.Cause); l.Add(n.Agent); }
+                return l;
+            }
+            List<object> Day(CauseDay d)
+            {
+                var l = new List<object> { (double)d.Day };
+                foreach (var kv in d.Totals) { l.Add(kv.Key); l.Add((double)kv.Value); }
+                return l;
+            }
+            var last = new List<object>();
+            var ids = new List<int>(c.Last.Keys);
+            ids.Sort();
+            foreach (int id in ids) { last.Add(id); last.Add((int)c.Last[id]); }
+            var gone = new List<object>();
+            foreach (int id in c.Gone) gone.Add(id);
+            return new Dictionary<string, object>
+            {
+                ["now"] = (double)c.Now, ["primed"] = c.Primed,
+                ["notes"] = Notes(c.Notes), ["today"] = Notes(c.Today.Values),
+                ["days"] = c.Days.ConvertAll(d => (object)Day(d)), ["open"] = Day(c.OpenWithMoney()), ["last"] = last, ["gone"] = gone,
+            };
+        }
+
+        private static void LoadCauses(CauseLog c, IDictionary<string, object> o)
+        {
+            IEnumerable<CauseNote> Notes(IList<object> a)
+            {
+                for (int i = 0; i + 3 < a.Count; i += 4)
+                    yield return new CauseNote { Tick = (long)D(a[i]), Citizen = I(a[i + 1]), Cause = (Cause)I(a[i + 2]), Agent = I(a[i + 3]) };
+            }
+            CauseDay Day(IList<object> a)
+            {
+                var d = new CauseDay { Day = (long)D(a[0]) };
+                for (int i = 1; i + 1 < a.Count; i += 2) d.Totals[I(a[i])] = (long)D(a[i + 1]);
+                return d;
+            }
+            c.Now = (long)o.GetDouble("now");
+            c.Primed = (bool)o["primed"];
+            c.Notes.AddRange(Notes(Arr(o, "notes")));
+            foreach (CauseNote n in Notes(Arr(o, "today"))) c.Today[n.Citizen] = n;
+            foreach (object d in Arr(o, "days")) c.Days.Add(Day((IList<object>)d));
+            c.Open = Day(Arr(o, "open"));
+            IList<object> last = Arr(o, "last");
+            for (int i = 0; i + 1 < last.Count; i += 2) c.Last[I(last[i])] = (byte)I(last[i + 1]);
+            foreach (object id in Arr(o, "gone")) c.Gone.Add(I(id));
+        }
 
         // ------------------------------------------------------------------ economy
 
@@ -133,7 +192,7 @@ namespace WorldSim.Core.Persistence
                     ["rev"] = (double)co.RevenueToday, ["cost"] = (double)co.CostToday,
                     ["profitAvg"] = co.ProfitAvg, ["lastProfit"] = (double)co.LastProfit,
                     ["lastOutput"] = co.LastOutput, ["outputCap"] = co.OutputCapacity,
-                    ["shortage"] = co.InputShortage, ["energy"] = co.EnergyUse,
+                    ["shortage"] = co.InputShortage, ["energy"] = co.EnergyUse, ["targetCause"] = (int)co.TargetCause,
                 });
             return new Dictionary<string, object>
             {
@@ -227,6 +286,7 @@ namespace WorldSim.Core.Persistence
                     LastOutput = d.GetDouble("lastOutput"), OutputCapacity = d.GetDouble("outputCap"),
                     InputShortage = (bool)d["shortage"], EnergyUse = d.GetDouble("energy"),
                 };
+                if (d.ContainsKey("targetCause")) co.TargetCause = (Cause)d.GetInt("targetCause");
                 foreach (object x in (IList<object>)d["workers"]) co.Workers.Add(I(x));
                 ReadDict(Obj(d, "inv"), co.Inventory);
                 ReadDict(Obj(d, "salesAvg"), co.SalesAvg);

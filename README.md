@@ -73,7 +73,7 @@ dotnet test                                                              # 自�
 dotnet run -c Release --project WorldSim.Cli -- --days 60 --probe        # 介入実験の表（5通りの乱数で偶然を判別）
 dotnet run -c Release --project WorldSim.Cli -- --days 3650 --save /tmp/w.json   # 10年連続実行と保存→読込の一致
 dotnet run -c Release --project WorldSim.Cli -- --bench                  # 規模別の性能計測（docs/BENCHMARKS.md）
-./publish-web.sh                                                         # ブラウザ版を out/web/wwwroot に作る
+./publish-web.sh                                                         # ブラウザ版を out/web/wwwroot に作る（wasm-tools があればAOT）
 ```
 
 ブラウザでの自動テストの手順は [dotnet/WorldSim.Web/tests/README.md](dotnet/WorldSim.Web/tests/README.md) にあります。

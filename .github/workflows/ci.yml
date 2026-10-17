@@ -41,11 +41,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Publish the web build
+      - name: Install the WebAssembly AOT workload
+        run: dotnet workload install wasm-tools
+      - name: Publish the web build (AOT)
         run: cd dotnet && ./publish-web.sh
       - name: Install Playwright
         run: npm install playwright@1.56.1 && npx playwright install --with-deps chromium
       - name: Browser tests
         run: |
           node dotnet/WorldSim.Web/tests/life.test.js /tmp
+          export EXPECT_HASH=$(cd dotnet && dotnet run -c Release --project WorldSim.Cli -- --seed 7 --days 60 | sed -n 's/State hash: //p')
           node dotnet/WorldSim.Web/tests/why.test.js /tmp

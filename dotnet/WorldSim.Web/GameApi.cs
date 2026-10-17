@@ -498,6 +498,10 @@ namespace WorldSim.Web
             return Json.Serialize(list);
         }
 
+        /// <summary>Fingerprint of the active world (determinism checks across builds, e.g. AOT vs interpreter).</summary>
+        [JSInvokable]
+        public static string StateHash() => _branches.Active.World.ComputeHash().ToString("X16");
+
         [JSInvokable]
         public static string Fork(string name)
         {

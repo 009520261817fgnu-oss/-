@@ -110,6 +110,11 @@ const check = (name, ok, extra) => { console.log((ok ? 'PASS ' : 'FAIL ') + name
   await page.waitForTimeout(300);
   await page.screenshot({ path: out + '/why-mobile.png' });
   check('no horizontal overflow on phone', !(await ev(`document.documentElement.scrollWidth > innerWidth`)));
+  // The browser build (interpreter or AOT) must compute exactly what the .NET CLI computes.
+  if (process.env.EXPECT_HASH) {
+    const hash = await ev(`(() => { setSpeed(0); japi('Init', 7); api('AdvanceBranch', japi('Branches').find(b => b.active).id, 60); return api('StateHash'); })()`);
+    check('same state hash as the CLI (seed 7, 60 days)', hash === process.env.EXPECT_HASH, { browser: hash, cli: process.env.EXPECT_HASH });
+  }
   check('no page errors', errors.length === 0, errors.slice(0, 5));
   await browser.close();
   server.close();

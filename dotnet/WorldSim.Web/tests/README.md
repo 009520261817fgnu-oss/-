@@ -14,3 +14,4 @@ node WorldSim.Web/tests/why.test.js /tmp
 - `PLAYWRIGHT_MODULE`：playwrightモジュールのパス
 - `THREE_JS`：CDNに接続できない環境で使う three.min.js（r128）のローカルパス
 - `WEB_ROOT`：公開物のフォルダ
+- `EXPECT_HASH`：CLIの `--seed 7 --days 60` の状態ハッシュ。指定すると、ブラウザ版が同じ結果を出すか確かめる（AOTと通訳実行の一致の確認）

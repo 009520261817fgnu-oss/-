@@ -42,7 +42,8 @@ jobs:
         with:
           node-version: 22
       - name: Install the WebAssembly AOT workload
-        run: dotnet workload install wasm-tools
+        # restore (not install) registers the workload for this SDK, the same fix that was needed locally
+        run: dotnet workload restore dotnet/WorldSim.Web/WorldSim.Web.csproj && dotnet workload list
       - name: Publish the web build (AOT)
         run: cd dotnet && ./publish-web.sh
       - name: Install Playwright

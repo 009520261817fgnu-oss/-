@@ -463,7 +463,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Digit1') setSpeed(1);
   if (e.code === 'Digit2') setSpeed(2);
   if (e.code === 'Digit3') setSpeed(3);
-  if (e.code === 'KeyV') Cam.setMode({ overhead: 'free', free: 'walk', walk: 'overhead' }[S.cam]);
+  if (e.code === 'Digit4') setSpeed(4);
+  if (e.code === 'KeyV' && Life.mode !== 'life') Cam.setMode({ overhead: 'free', free: 'walk', walk: 'overhead' }[S.cam]);
   if (e.code === 'Escape') { setTool('inspect'); cancelPending(); }
 });
 addEventListener('keyup', (e) => (Keys[e.code] = false));
@@ -496,6 +497,7 @@ function initPointer() {
     if (ptrs.size === 2) { gesture = startPinch(); return; }
     if (ptrs.size > 2) return;
     const look = S.cam !== 'overhead';
+    if (Life.on()) { gesture = { kind: Life.cam === 'overhead' ? 'rotate' : 'look', maybeTap: e.button === 0 }; return; }
     if (e.button === 2 || (e.button === 0 && e.altKey)) gesture = { kind: look ? 'look' : 'rotate' };
     else if (e.button === 1) gesture = { kind: 'pan' };
     else if (look && (S.tool === 'inspect' || e.pointerType === 'touch')) gesture = { kind: 'look' };
@@ -531,7 +533,8 @@ function initPointer() {
   el.addEventListener('pointercancel', end);
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
-    if (S.cam === 'overhead') Cam.dist = Math.max(40, Math.min(2600, Cam.dist * Math.pow(1.0012, e.deltaY)));
+    if (Life.on()) Life.zoom(Math.pow(1.0012, e.deltaY));
+    else if (S.cam === 'overhead') Cam.dist = Math.max(40, Math.min(2600, Cam.dist * Math.pow(1.0012, e.deltaY)));
     else Cam.pos.addScaledVector(new THREE.Vector3(-Math.sin(Cam.lookYaw), Math.sin(Cam.lookPitch), -Math.cos(Cam.lookYaw)), -e.deltaY * 0.3);
   }, { passive: false });
 }
@@ -545,7 +548,9 @@ function startPinch() {
 function movePinch() {
   const [a, b] = [...ptrs.values()];
   const d = Math.hypot(a.x - b.x, a.y - b.y), ang = Math.atan2(b.y - a.y, b.x - a.x), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  if (S.cam === 'overhead') {
+  if (Life.on()) {
+    if (gesture.d > 10) Life.zoom(gesture.d / Math.max(10, d));
+  } else if (S.cam === 'overhead') {
     if (gesture.d > 10) Cam.dist = Math.max(40, Math.min(2600, Cam.dist * gesture.d / Math.max(10, d)));
     Cam.yaw += ang - gesture.ang;
     Cam.pan(mx - gesture.mx, my - gesture.my);
@@ -557,7 +562,7 @@ function movePinch() {
 
 /* Mouse hover: the ghost follows the cursor (touch has no hover; it uses taps and drags). */
 function hoverAt(e) {
-  if (e.pointerType === 'touch') return;
+  if (e.pointerType === 'touch' || Life.mode === 'life') return;
   const h = pick(e.clientX, e.clientY);
   if (!h || (S.hover && h.x === S.hover.x && h.z === S.hover.z)) return;
   S.hover = h;
@@ -591,6 +596,7 @@ function tap(e, type) {
   if (!cell) return;
   S.hover = cell;
   const touch = type === 'touch';
+  if (Life.on()) { Life.tap(cell); return; }
   if (S.tool === 'inspect') { inspectAt(cell); return; }
   if (S.tool === 'build') {
     if (!S.buildDef) { $('#drawer').hidden = false; toast('建てる建物を選んでください'); return; }
@@ -816,6 +822,9 @@ function initUi() {
   Cam.setMode('overhead');
   $$('[data-cam]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cam === 'overhead')));
   buildDrawer();
+  Life.init();
+  initMouseLook();
+  $('#gyroBtn').addEventListener('click', () => Gyro.toggle());
 }
 
 function initStick() {
@@ -909,7 +918,7 @@ function showTab(tab) {
 function renderPanel() {
   const body = $('#panelBody');
   const fn = { info: renderInfo, analysis: renderAnalysis, charts: renderCharts, policy: renderPolicy, research: renderResearch,
-    branches: renderBranches, save: renderSave, disaster: renderDisaster, news: renderNews, about: renderAbout }[S.tab];
+    branches: renderBranches, save: renderSave, disaster: renderDisaster, news: renderNews, about: renderAbout, life: (b) => Life.renderPanel(b) }[S.tab];
   const scroll = body.scrollTop;
   fn(body);
   body.scrollTop = scroll;
@@ -1219,10 +1228,11 @@ function renderAbout(el) {
     <li><b>企業と製造</b>：原料→中間財→製品の3段階、在庫、故障、倒産と再開、配当</li>
     <li><b>経済と政治</b>：価格・賃金・税・補助・年金・失業手当・電気料金</li>
     <li><b>技術・環境・災害</b>：研究と企業の導入、電力、大気汚染、天候、洪水・地震と復旧</li>
-    <li><b>分析と歴史</b>：グラフ、原因診断、90日予測、保存・ロード、歴史分岐と比較</li></ul>
+    <li><b>分析と歴史</b>：グラフ、原因診断、90日予測、保存・ロード、歴史分岐と比較</li>
+    <li><b>人生体験</b>：住民ひとりとして歩き、建物に入り、働く・買う・食べる・眠る・就職・転居・会話（第1段階）。ジャイロ・マウスで視点操作</li></ul>
     <h4>まだ無い機能（今後）</h4><ul class="plain">
-    <li>建物の内部・モジュール式建築・自由形状の建築</li><li>鉄道・港・橋・トンネル、複数の都市や国家</li>
-    <li>工場内部の設備配置、人物の直接操作</li><li>生態系（動物）・進化、外交・安全保障</li>
+    <li>建物内部の自由な設計・モジュール式建築・自由形状の建築</li><li>鉄道・港・橋・トンネル、複数の都市や国家</li>
+    <li>工場内部の設備配置、世帯・家族と人生の節目（結婚・出産など）</li><li>生態系（動物）・進化、外交・安全保障</li>
     <li>AIによる改善提案、マルチプレイ、ユーザー作成コンテンツの読み込み画面</li></ul>`;
 }
 
@@ -1269,8 +1279,9 @@ function frame(t) {
   R.sun.intensity = 0.6 + 0.25 * daylight;
   R.flood.visible = st.floodLevel > 0;
   R.flood.position.y = st.floodLevel;
-  Cam.update(dt);
-  R.renderer.render(R.scene, R.camera);
+  // Life mode drives the camera itself (and may draw a building interior instead of the map).
+  if (!Life.frame(dt, st, t)) Cam.update(dt);
+  R.renderer.render(Life.scene() || R.scene, R.camera);
   requestAnimationFrame(frame);
 }
 

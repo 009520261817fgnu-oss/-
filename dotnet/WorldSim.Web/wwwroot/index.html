@@ -26,6 +26,7 @@
   color-scheme: dark;
 }
 html, body { height: 100%; }
+[hidden] { display: none !important; }
 body { background: var(--ground); color: var(--text); font-family: var(--ui); font-size: 14px; overflow: hidden; -webkit-user-select: none; user-select: none; touch-action: none; }
 button, select, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -151,6 +152,25 @@ ul.plain b { color: var(--text); font-weight: 500; }
 #updown { position: fixed; z-index: 12; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 222px); bottom: calc(env(safe-area-inset-bottom, 0px) + 30px); display: grid; gap: 8px; }
 #updown button { width: 48px; height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); font-size: 18px; }
 
+/* Life mode card */
+#lifeCard { position: fixed; z-index: 11; left: max(10px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); width: min(400px, calc(100vw - 20px));
+  max-height: 46vh; overflow: auto; padding: 10px 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+#lifeCard header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+#lifeCard header b { font-size: 15px; }
+#lifeCard header span { color: var(--muted); font-size: 12px; }
+#lifeCard header .num { margin-left: auto; color: var(--text); }
+#lifeCard .needs { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; margin: 6px 0; color: var(--muted); }
+#lifeCard .needs b { color: var(--text); font-weight: 500; }
+.meter { display: inline-block; width: 64px; height: 7px; border-radius: 4px; background: var(--raised); vertical-align: middle; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--good); }
+.meter.warn i { background: var(--warn); } .meter.bad i { background: var(--bad); }
+#lifeCard .acts, #lifeCard .picker, #lifeCard .people { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+#lifeCard .btn { min-height: 40px; padding: 6px 10px; text-align: left; }
+#lifeCard .btn small { display: block; color: var(--muted); font-size: 11px; font-weight: 400; }
+#lifeCard .btn.primary small { color: var(--accent-ink); }
+kbd { font-family: var(--num); font-size: 11px; padding: 0 4px; border: 1px solid currentColor; border-radius: 4px; opacity: .7; }
+body.life #stick { left: 50%; margin-left: -60px; bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); }
+
 @media (max-width: 760px) {
   #hud { gap: 4px 10px; }
   .stat b { font-size: 13px; }
@@ -164,6 +184,9 @@ ul.plain b { color: var(--text); font-weight: 500; }
   #confirm { bottom: calc(env(safe-area-inset-bottom, 0px) + 90px); }
   #stick { bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); left: max(16px, env(safe-area-inset-left, 0px)); }
   #updown { bottom: calc(env(safe-area-inset-bottom, 0px) + 98px); left: auto; right: max(16px, env(safe-area-inset-right, 0px)); }
+  #lifeCard { left: max(8px, env(safe-area-inset-left, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); width: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); max-height: 38vh; }
+  body.life #panel { bottom: auto; max-height: 40vh; }
+  body.life #stick { left: auto; margin-left: 0; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(38vh + 20px); }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -188,17 +211,28 @@ ul.plain b { color: var(--text); font-weight: 500; }
   <div class="stat hide-sm"><b id="hEnergy">—</b><span>電力</span></div>
   <div class="stat hide-sm"><b id="hWeather">—</b><span>天気</span></div>
   <div class="spacer"></div>
+  <div class="seg" role="group" aria-label="モード">
+    <button data-mode="creator" aria-pressed="true">世界創造</button>
+    <button data-mode="life">人生体験</button>
+  </div>
   <div class="seg" role="group" aria-label="時間の速さ">
     <button data-speed="0">停止</button>
     <button data-speed="1">1×</button>
     <button data-speed="2">4×</button>
     <button data-speed="3">16×</button>
+    <button data-speed="4" title="1時間＝約20秒">生活</button>
   </div>
-  <div class="seg" role="group" aria-label="カメラ">
+  <div class="seg" role="group" aria-label="カメラ" id="camSeg">
     <button data-cam="overhead">俯瞰</button>
     <button data-cam="free">自由</button>
     <button data-cam="walk">一人称</button>
   </div>
+  <div class="seg" role="group" aria-label="人生のカメラ" id="lifeCamSeg" hidden>
+    <button data-lcam="first">一人称</button>
+    <button data-lcam="third" aria-pressed="true">三人称</button>
+    <button data-lcam="overhead">俯瞰</button>
+  </div>
+  <div class="seg"><button id="gyroBtn" aria-pressed="false" title="端末の傾きで視点を動かす">ジャイロ</button></div>
 </header>
 
 <nav id="tools" hidden aria-label="ツール">
@@ -217,11 +251,12 @@ ul.plain b { color: var(--text); font-weight: 500; }
     <button role="tab" data-tab="info" aria-selected="true">情報</button>
     <button role="tab" data-tab="analysis">分析</button>
     <button role="tab" data-tab="charts">グラフ</button>
-    <button role="tab" data-tab="policy">政策</button>
-    <button role="tab" data-tab="research">研究</button>
-    <button role="tab" data-tab="branches">歴史分岐</button>
+    <button role="tab" data-tab="life">人生</button>
+    <button role="tab" data-tab="policy" data-creator>政策</button>
+    <button role="tab" data-tab="research" data-creator>研究</button>
+    <button role="tab" data-tab="branches" data-creator>歴史分岐</button>
     <button role="tab" data-tab="save">保存</button>
-    <button role="tab" data-tab="disaster">災害</button>
+    <button role="tab" data-tab="disaster" data-creator>災害</button>
     <button role="tab" data-tab="news">ニュース</button>
     <button role="tab" data-tab="about">概要</button>
     <button class="collapse" id="collapse" aria-label="パネルを折りたたむ">▾</button>
@@ -241,8 +276,10 @@ ul.plain b { color: var(--text); font-weight: 500; }
 <div id="confirm" hidden><span id="confirmText"></span><button class="btn" id="confirmList" hidden>一覧</button><button class="btn primary" id="confirmOk">建設</button><button class="btn" id="confirmCancel">やめる</button></div>
 <div id="stick" hidden><i></i></div>
 <div id="updown" hidden><button id="btnUp" aria-label="上昇">▲</button><button id="btnDown" aria-label="下降">▼</button></div>
+<section id="lifeCard" hidden aria-label="人物の状態"></section>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="framework/blazor.webassembly.js" autostart="false"></script>
 <script src="app.js"></script>
+<script src="life.js"></script>

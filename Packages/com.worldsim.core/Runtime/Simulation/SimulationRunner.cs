@@ -10,6 +10,8 @@ namespace WorldSim.Core.Simulation
         Normal = 1,
         Fast = 2,
         VeryFast = 3,
+        /// <summary>Life pace for living as a resident: one in-game hour per 20 seconds.</summary>
+        Life = 4,
     }
 
     /// <summary>A unit of simulation logic run on a fixed tick interval.</summary>
@@ -78,6 +80,7 @@ namespace WorldSim.Core.Simulation
                 case SimSpeed.Normal: return 2;
                 case SimSpeed.Fast: return 8;
                 case SimSpeed.VeryFast: return 32;
+                case SimSpeed.Life: return 0.05;
                 default: return 0;
             }
         }

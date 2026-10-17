@@ -20,7 +20,7 @@ namespace WorldSim.Web
     /// The browser's window into the simulation. Every method is a thin adapter: JSON or base64 in
     /// and out, all rules stay in WorldSim.Core. Called synchronously from JS via DotNet.invokeMethod.
     /// </summary>
-    public static class GameApi
+    public static partial class GameApi
     {
         private static ContentDatabase _content;
         private static BranchManager _branches;
@@ -77,6 +77,7 @@ namespace WorldSim.Web
         {
             int ran = Runner.Update(Math.Min(dt, 0.25));
             WorldState w = World;
+            Core.People.AvatarSystem.TryArrive(w, w.Clock.Tick + Runner.TickProgress);
             EconomyState e = w.Economy;
             StatsSnapshot last = w.History.Count > 0 ? w.History[w.History.Count - 1] : null;
             ResearchState rs = e.City.Research;
@@ -120,11 +121,13 @@ namespace WorldSim.Web
                 ["branchId"] = _branches.Active.Id,
                 ["days"] = w.History.Count,
                 ["pollution"] = last?.AvgPollution ?? 0,
+                ["mode"] = _lifeMode ? "life" : "creator",
+                ["player"] = w.Player.CitizenId,
             });
         }
 
         [JSInvokable]
-        public static void SetSpeed(int speed) => Runner.Speed = (SimSpeed)Math.Max(0, Math.Min(3, speed));
+        public static void SetSpeed(int speed) => Runner.Speed = (SimSpeed)Math.Max(0, Math.Min(4, speed));
 
         // ------------------------------------------------------------------ world layers
 
@@ -262,7 +265,7 @@ namespace WorldSim.Web
                     break;
                 default: return Result(CommandResult.Fail("不明な操作です"));
             }
-            return Result(cmd.Execute(World));
+            return Result(CommandGate.Execute(World, CurrentActor, cmd));
         }
 
         [JSInvokable]

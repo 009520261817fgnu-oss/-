@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Unity 6 compiles C# 9; keep the shared sources within that language version. -->
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <PackageRoot>$(MSBuildThisFileDirectory)../Packages/com.worldsim.core/</PackageRoot>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Headless runner: generates a world, runs the simulation, prints stats and renders a map PNG. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(PackageRoot)Content/Resources/WorldSimContent/*.json" LinkBase="WorldSimContent" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WorldSim.Core/WorldSim.Core.csproj" />
+  </ItemGroup>
+</Project>

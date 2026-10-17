@@ -1,0 +1,7 @@
+{
+  "name": "com.worldsim.core",
+  "version": "0.1.0",
+  "displayName": "WorldSim Core",
+  "description": "Engine-independent world data, simulation, content and persistence for the WorldSim prototype. Must not reference UnityEngine.",
+  "unity": "6000.0"
+}

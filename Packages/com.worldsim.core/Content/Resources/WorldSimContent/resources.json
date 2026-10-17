@@ -1,0 +1,10 @@
+{
+  "resources": [
+    { "id": "grain",    "name": "穀物",   "tier": "Raw" },
+    { "id": "wood",     "name": "木材",   "tier": "Raw" },
+    { "id": "iron_ore", "name": "鉄鉱石", "tier": "Raw" },
+    { "id": "steel",    "name": "鋼材",   "tier": "Intermediate" },
+    { "id": "food",     "name": "食品",   "tier": "Product" },
+    { "id": "tools",    "name": "工具",   "tier": "Product" }
+  ]
+}

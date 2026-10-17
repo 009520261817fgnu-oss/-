@@ -1,0 +1,14 @@
+{
+  "buildings": [
+    { "id": "house_small", "name": "戸建住宅",   "category": "Residential", "width": 2, "depth": 2, "height": 6,  "color": "#E8C07A", "params": { "housing": 4 } },
+    { "id": "apartment",   "name": "集合住宅",   "category": "Residential", "width": 3, "depth": 3, "height": 18, "color": "#D9A05B", "params": { "housing": 40 } },
+    { "id": "shop",        "name": "商店",       "category": "Commercial",  "width": 2, "depth": 2, "height": 5,  "color": "#5BA4D9", "params": { "jobs": 6 } },
+    { "id": "office",      "name": "オフィス",   "category": "Commercial",  "width": 3, "depth": 3, "height": 24, "color": "#3C7CC0", "params": { "jobs": 60 } },
+    { "id": "factory",     "name": "工場",       "category": "Industrial",  "width": 4, "depth": 4, "height": 10, "maxSlope": 2.0, "color": "#B0A08C", "params": { "jobs": 40 } },
+    { "id": "warehouse",   "name": "倉庫",       "category": "Industrial",  "width": 3, "depth": 3, "height": 7,  "color": "#9A8C78", "params": { "jobs": 8 } },
+    { "id": "farm",        "name": "農場",       "category": "Agriculture", "width": 4, "depth": 4, "height": 3,  "maxSlope": 4.0, "color": "#C8B25A", "params": { "jobs": 6 } },
+    { "id": "power_plant", "name": "発電所",     "category": "Power",       "width": 4, "depth": 4, "height": 14, "maxSlope": 2.0, "color": "#7A7A80", "params": { "jobs": 20 } },
+    { "id": "town_hall",   "name": "市役所",     "category": "Public",      "width": 3, "depth": 3, "height": 12, "color": "#E0E0E0", "params": { "jobs": 15 } },
+    { "id": "school",      "name": "学校",       "category": "Public",      "width": 3, "depth": 3, "height": 8,  "color": "#F0E6C8", "params": { "jobs": 12 } }
+  ]
+}

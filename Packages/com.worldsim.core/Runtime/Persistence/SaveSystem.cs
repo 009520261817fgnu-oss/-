@@ -191,7 +191,7 @@ namespace WorldSim.Core.Persistence
                     c.Id, (double)c.Cash, (double)c.BirthDay, c.HomeId, c.JobId, c.Education, c.Retired,
                     (double)c.Happiness, (double)c.CommuteHours, c.UnemployedDays, (double)c.LastNetIncome,
                     (double)c.FoodMet, (double)c.GoodsMet, (double)c.ServicesMet, c.SchoolDays, c.TenureDays,
-                    Relations(c), (double)c.LastRent, c.RentArrearsDays, (double)c.Health,
+                    Relations(c), (double)c.LastRent, c.RentArrearsDays, (double)c.Health, c.PartnerId, c.ParentId,
                 });
             var companies = new List<object>();
             foreach (Company co in e.Companies.Values)
@@ -285,6 +285,7 @@ namespace WorldSim.Core.Persistence
                     foreach (var kv in rel) c.AddAffinity(int.Parse(kv.Key, CultureInfo.InvariantCulture), (float)D(kv.Value));
                 if (a.Count > 18) { c.LastRent = (long)D(a[17]); c.RentArrearsDays = I(a[18]); }
                 if (a.Count > 19) c.Health = (float)D(a[19]);
+                if (a.Count > 21) { c.PartnerId = I(a[20]); c.ParentId = I(a[21]); }
                 e.Citizens.Add(c.Id, c);
                 e.MoveIn(c, I(a[3]));
             }

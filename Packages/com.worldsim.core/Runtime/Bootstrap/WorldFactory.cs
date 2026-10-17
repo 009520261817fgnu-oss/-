@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using WorldSim.Core.Content;
 using WorldSim.Core.Economy;
 using WorldSim.Core.Simulation;
@@ -253,6 +254,32 @@ namespace WorldSim.Core.Bootstrap
         }
 
         /// <summary>Fills housing with residents, stocks businesses for a few days and staffs them.</summary>
+        /// <summary>
+        /// Initial households without extra random draws: in each building, adults of similar age are
+        /// paired in id order (about three in five), and children are assigned to an adult living there.
+        /// </summary>
+        private static void PairInitialHouseholds(WorldState w)
+        {
+            EconomyState e = w.Economy;
+            long today = w.Clock.TotalDays;
+            foreach (var group in e.Citizens.Values.GroupBy(c => c.HomeId).OrderBy(g => g.Key))
+            {
+                var adults = group.Where(c => c.AgeYears(today) >= 20 && c.AgeYears(today) <= 60).OrderBy(c => c.Id).ToList();
+                for (int i = 0; i + 1 < adults.Count; i += 2)
+                {
+                    Citizen a = adults[i], b = adults[i + 1];
+                    if ((a.Id + b.Id) % 5 >= 3 || Math.Abs(a.AgeYears(today) - b.AgeYears(today)) > Systems.Households.MaxAgeGap) continue;
+                    a.PartnerId = b.Id;
+                    b.PartnerId = a.Id;
+                }
+                var parents = adults.Where(c => c.AgeYears(today) <= 50).ToList();
+                if (parents.Count == 0) continue;
+                int k = 0;
+                foreach (Citizen child in group.Where(c => c.AgeYears(today) < 18).OrderBy(c => c.Id))
+                    child.ParentId = parents[k++ % parents.Count].Id;
+            }
+        }
+
         public static void Populate(WorldState w, double occupancy)
         {
             EconomyState e = w.Economy;
@@ -279,6 +306,8 @@ namespace WorldSim.Core.Bootstrap
                     e.Ledger.Transfer(e.External, c, rng.NextInt(100_000, 600_000), Flow.Migration);
                 }
             }
+
+            PairInitialHouseholds(w);
 
             foreach (Company co in e.Companies.Values)
             {

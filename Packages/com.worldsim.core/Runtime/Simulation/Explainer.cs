@@ -193,6 +193,10 @@ namespace WorldSim.Core.Simulation
                 case Cause.InvestedForImports: return "輸入超過を見た民間投資";
                 case Cause.InvestedForUnmetDemand: return "品不足を見た民間投資";
                 case Cause.GovernmentDecision: return "自治体の判断";
+                case Cause.Married: return "結婚";
+                case Cause.Separated: return "離別";
+                case Cause.LeftParentsHome: return "親元からの独立";
+                case Cause.FamilyFollowed: return "家族と一緒に転出";
                 case Cause.PublicStaffing: return "公共・発電の定員変更";
                 case Cause.Disaster: return "災害";
                 case Cause.MovedCloserToWork: return "職場の近くへ転居";

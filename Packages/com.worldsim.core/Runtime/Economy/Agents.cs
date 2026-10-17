@@ -35,6 +35,10 @@ namespace WorldSim.Core.Economy
         public int TenureDays;
         /// <summary>Closeness (0..1) to other residents, only for people this one has interacted with.</summary>
         public SortedDictionary<int, float> Relations;
+        /// <summary>Spouse or partner (S4 households), 0 if single. Always mutual.</summary>
+        public int PartnerId;
+        /// <summary>A parent (for children born or raised in town), 0 if unknown.</summary>
+        public int ParentId;
 
         public const int DaysPerPromotion = 180;
         public const int MaxPromotions = 3;

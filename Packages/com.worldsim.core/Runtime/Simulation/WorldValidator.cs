@@ -29,6 +29,8 @@ namespace WorldSim.Core.Simulation
                     if (!w.TryGetBuilding(c.HomeId, out Building h) || h.Def.Housing == 0) problems.Add($"住民 #{c.Id} の住居 #{c.HomeId} が不正");
                     occupancy[c.HomeId] = (occupancy.TryGetValue(c.HomeId, out int n) ? n : 0) + 1;
                 }
+                if (c.PartnerId != 0 && (!e.Citizens.TryGetValue(c.PartnerId, out Citizen partner) || partner.PartnerId != c.Id))
+                    problems.Add($"住民 #{c.Id} の配偶者 #{c.PartnerId} が一致しません");
                 if (c.JobId != 0)
                 {
                     if (!e.Companies.TryGetValue(c.JobId, out Company co) || !co.Workers.Contains(c.Id))

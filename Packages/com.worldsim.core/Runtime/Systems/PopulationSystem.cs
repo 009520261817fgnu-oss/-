@@ -14,7 +14,8 @@ namespace WorldSim.Core.Systems
     public sealed class PopulationSystem : ISimulationSystem
     {
         public const int SchoolYears = 12;
-        public const double BirthRatePerYear = 0.05;
+        /// <summary>Share of newcomers who arrive with a partner (S4).</summary>
+        public const double CoupleArrivalShare = 0.4;
         public const double MoveCheckShare = 0.02;
         /// <summary>Residents commuting longer than this occasionally look for a closer home.</summary>
         public const float MoveCommuteHours = 0.2f;
@@ -34,6 +35,7 @@ namespace WorldSim.Core.Systems
             Education(w, today);
             HealthSystem.Update(w, today);
             UpdateHappiness(w, today);
+            Households.Update(w, today, rng, w.Player.CitizenId);
 
             var leaving = new List<(Citizen c, Cause why)>();
             var dying = new List<(Citizen c, Cause why)>();
@@ -58,16 +60,36 @@ namespace WorldSim.Core.Systems
                 if (c.JobId == 0 && !c.Retired && c.IsWorkingAge(today)) c.UnemployedDays++;
                 if (c.Happiness < 0.3f && rng.Chance(0.01)) { leaving.Add((c, Cause.EmigratedUnhappy)); continue; }
                 if (c.JobId == 0 && c.UnemployedDays > 30 && c.IsWorkingAge(today) && rng.Chance(0.03)) { leaving.Add((c, Cause.EmigratedUnemployed)); continue; }
-                if (age >= 20 && age <= 40 && c.HomeId != 0 && rng.Chance(BirthRatePerYear / SimClock.DaysPerYear)
+                // Children are born to couples living together (counted once, by the partner with the lower id).
+                if (c.PartnerId > c.Id && age >= 20 && age <= 42 && c.HomeId != 0
+                    && e.Citizens.TryGetValue(c.PartnerId, out Citizen partner) && partner.HomeId == c.HomeId
+                    && partner.AgeYears(today) >= 20 && partner.AgeYears(today) <= 42
+                    && rng.Chance(Households.CoupleBirthRatePerYear / SimClock.DaysPerYear)
                     && w.TryGetBuilding(c.HomeId, out Building h) && e.Residents(h.Id) < h.Def.Housing)
                 {
-                    newborns.Add(new Citizen { BirthDay = today, Education = 0, SchoolDays = 0, Happiness = c.Happiness, HomeId = c.HomeId, Health = 1f });
+                    newborns.Add(new Citizen { BirthDay = today, Education = 0, SchoolDays = 0, Happiness = c.Happiness, HomeId = c.HomeId, Health = 1f, ParentId = c.Id });
                 }
                 if (c.JobId != 0 && c.CommuteHours > MoveCommuteHours && rng.Chance(MoveCheckShare)) MoveCloserToWork(w, c, homes);
                 else if (c.HomeId != 0 && HousingMarket.RentBurden(c) > 0.5 && rng.Chance(MoveCheckShare)) MoveForCheaperRent(w, c, homes);
             }
-            foreach (var (c, why) in dying) { e.RemoveCitizen(c, e.City, Flow.Inheritance, why); stats.Deaths++; }
-            foreach (var (c, why) in leaving) { e.RemoveCitizen(c, e.External, Flow.Migration, why); stats.Emigrants++; }
+            foreach (var (c, why) in dying)
+            {
+                Households.Separate(e, c); // the partner is widowed
+                e.RemoveCitizen(c, e.City, Flow.Inheritance, why);
+                stats.Deaths++;
+            }
+            foreach (var (c, why) in leaving)
+            {
+                if (!e.Citizens.ContainsKey(c.Id)) continue; // already left with their family
+                // A household leaves town together; a household that includes the player stays.
+                List<Citizen> family = Households.Members(e, c, today);
+                if (family.Exists(m => m.Id == player)) continue;
+                foreach (Citizen m in family)
+                {
+                    e.RemoveCitizen(m, e.External, Flow.Migration, m == c ? why : Cause.FamilyFollowed);
+                    stats.Emigrants++;
+                }
+            }
             foreach (Citizen b in newborns)
             {
                 if (!w.TryGetBuilding(b.HomeId, out Building hb) || e.Residents(b.HomeId) >= hb.Def.Housing) continue;
@@ -80,6 +102,7 @@ namespace WorldSim.Core.Systems
                 stats.Births++;
             }
             Immigrate(w, today, homes);
+            Households.LeaveParents(w, today, rng, homes, (c, except) => FindHome(w, c, homes, except, alone: true));
         }
 
         public static List<Building> ResidentialBuildings(WorldState w)
@@ -93,18 +116,24 @@ namespace WorldSim.Core.Systems
         private static bool Habitable(WorldState w, Building b) =>
             b.Condition >= 0.5f && w.Network.HasAccess(b.Id) && w.Economy.Residents(b.Id) < b.Def.Housing;
 
-        private static bool FindHome(WorldState w, Citizen c, List<Building> homes)
+        /// <summary>
+        /// Finds a home for a homeless resident and the homeless members of their household (partner,
+        /// children), or for the resident alone (a young adult leaving their parents).
+        /// </summary>
+        private static bool FindHome(WorldState w, Citizen c, List<Building> homes, int except = 0, bool alone = false)
         {
+            EconomyState e = w.Economy;
+            List<Citizen> members = alone ? new List<Citizen> { c } : Households.Members(e, c, w.Clock.TotalDays);
             Building best = null;
             float bestScore = float.NegativeInfinity;
             foreach (Building b in homes)
             {
-                if (!Habitable(w, b) || !HousingMarket.CanAfford(w, c, b.Id)) continue;
+                if (b.Id == except || !Habitable(w, b) || e.Residents(b.Id) + members.Count > b.Def.Housing || !HousingMarket.CanAfford(w, c, b.Id)) continue;
                 float score = HomeScore(w, b, c);
                 if (score > bestScore) { bestScore = score; best = b; }
             }
             if (best == null) return false;
-            w.Economy.MoveIn(c, best.Id);
+            foreach (Citizen m in members) e.MoveIn(m, best.Id);
             c.UnemployedDays = 0;
             return true;
         }
@@ -139,8 +168,7 @@ namespace WorldSim.Core.Systems
                 long rent = HousingMarket.RentFor(w, b.Id);
                 if (rent < bestRent) { bestRent = rent; best = b; }
             }
-            if (best == null) return;
-            w.Economy.MoveIn(c, best.Id);
+            if (best == null || !Households.MoveTogether(w, c, best.Id, w.Clock.TotalDays)) return;
             w.Economy.Causes.Note(c.Id, Cause.MovedForCheaperRent, best.Id);
             if (c.JobId != 0) c.CommuteHours = w.Network.TravelHours(best.Id, c.JobId);
             w.Economy.Daily.Moves++;
@@ -157,8 +185,7 @@ namespace WorldSim.Core.Systems
                 float h = w.Network.TravelHours(b.Id, c.JobId);
                 if (h < bestH) { bestH = h; best = b; }
             }
-            if (best == null) return;
-            w.Economy.MoveIn(c, best.Id);
+            if (best == null || !Households.MoveTogether(w, c, best.Id, w.Clock.TotalDays)) return;
             w.Economy.Causes.Note(c.Id, Cause.MovedCloserToWork, best.Id);
             c.CommuteHours = bestH;
             w.Economy.Daily.Moves++;
@@ -196,8 +223,29 @@ namespace WorldSim.Core.Systems
                 e.Ledger.Transfer(e.External, c, w.Random.NextInt(100_000, 400_000), Flow.Migration);
                 if (!FindHome(w, c, homes)) { e.RemoveCitizen(c, e.External, Flow.Migration); break; }
                 // Label arrivals by which pull brought them: job openings first, then spare housing.
-                e.Causes.Note(c.Id, (i + 0.5) / n <= forJobs / expected ? Cause.ImmigratedForJobs : Cause.ImmigratedForHousing, c.HomeId);
+                Cause pull = (i + 0.5) / n <= forJobs / expected ? Cause.ImmigratedForJobs : Cause.ImmigratedForHousing;
+                e.Causes.Note(c.Id, pull, c.HomeId);
                 e.Daily.Immigrants++;
+                // Some newcomers arrive as a couple (S4), if their new home has room for two.
+                if (w.Random.Chance(CoupleArrivalShare) && w.TryGetBuilding(c.HomeId, out Building home) && e.Residents(home.Id) < home.Def.Housing)
+                {
+                    var p = new Citizen
+                    {
+                        Id = w.AllocateId(),
+                        BirthDay = c.BirthDay - w.Random.NextInt(-4, 5) * SimClock.DaysPerYear,
+                        Education = w.Random.NextInt(0, 3),
+                        SchoolDays = -1,
+                        Happiness = 0.6f,
+                    };
+                    e.Citizens.Add(p.Id, p);
+                    e.Ledger.Transfer(e.External, p, w.Random.NextInt(100_000, 400_000), Flow.Migration);
+                    e.MoveIn(p, home.Id);
+                    Households.Marry(e, c, p);
+                    // Their arrival, not the marriage, is why the population changed today.
+                    e.Causes.Note(c.Id, pull, home.Id);
+                    e.Causes.Note(p.Id, pull, home.Id);
+                    e.Daily.Immigrants++;
+                }
             }
         }
 

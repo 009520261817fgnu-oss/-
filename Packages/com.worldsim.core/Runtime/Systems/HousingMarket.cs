@@ -52,7 +52,8 @@ namespace WorldSim.Core.Systems
                 {
                     e.Causes.Note(c.Id, Cause.Evicted, c.HomeId);
                     if (c.Id == w.Player.CitizenId) w.Log("人生", $"{People.Names.Of(c.Id)}は家賃を払えず、住まいを失いました");
-                    e.MoveIn(c, 0);
+                    // The whole household loses the home (partner, children).
+                    foreach (Citizen m in Households.Members(e, c, today)) e.MoveIn(m, 0);
                     c.RentArrearsDays = 0;
                 }
             }

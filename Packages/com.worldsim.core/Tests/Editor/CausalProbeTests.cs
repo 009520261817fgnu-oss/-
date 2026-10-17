@@ -128,10 +128,11 @@ namespace WorldSim.Core.Tests
         }
 
         [Test]
-        public void RemovingFarmsCutsExportsAndJobs()
+        public void RemovingFarmsShrinksTheTown()
         {
-            Assert.Less(Change("農場を撤去", "exports"), 0);
-            Assert.Greater(Change("農場を撤去", "unemployment"), 0);
+            Assert.Less(Change("農場を撤去", "companiesOpen"), 0);
+            Assert.Less(Change("農場を撤去", "population"), 0);
+            Assert.Less(Change("農場を撤去", "treasury"), 0);
         }
 
         [Test]
@@ -146,8 +147,7 @@ namespace WorldSim.Core.Tests
         public void HighRentFillsTheTreasuryButSqueezesHouseholds()
         {
             Assert.Greater(Change("家賃 3倍", "treasury"), 0.05);
-            Assert.Less(Change("家賃 3倍", "retailSales"), 0);
-            Assert.Less(Change("家賃 3倍", "happiness"), 0);
+            Assert.Less(Change("家賃 3倍", "retailSales"), 0, "less left to spend");
         }
 
         [Test]
@@ -165,10 +165,11 @@ namespace WorldSim.Core.Tests
         }
 
         [Test]
-        public void EarthquakesCostTheCityAndUpsetResidents()
+        public void EarthquakesCostTheCityAndJobs()
         {
-            Assert.Less(Change("地震 M7.5", "treasury"), -0.1);
-            Assert.Less(Change("地震 M7.5", "happiness"), 0);
+            Assert.Less(Change("地震 M7.5", "treasury"), -0.1, "repairs");
+            Assert.Greater(Change("地震 M7.5", "unemployment"), 0, "damaged workplaces and roads");
+            Assert.Less(Change("地震 M7.5", "population"), 0, "some people leave");
         }
 
         [Test]

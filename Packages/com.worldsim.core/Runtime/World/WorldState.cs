@@ -541,7 +541,7 @@ namespace WorldSim.Core.World
             foreach (Citizen c in e.Citizens.Values)
             {
                 h.Add(c.Id); h.Add(c.Cash); h.Add(c.HomeId); h.Add(c.JobId); h.Add(c.BirthDay);
-                h.Add(c.Education); h.Add(c.Happiness); h.Add(c.Retired); h.Add(c.Health);
+                h.Add(c.Education); h.Add(c.Happiness); h.Add(c.Retired); h.Add(c.Health); h.Add(c.PartnerId); h.Add(c.ParentId);
             }
             foreach (Company c in e.Companies.Values)
             {

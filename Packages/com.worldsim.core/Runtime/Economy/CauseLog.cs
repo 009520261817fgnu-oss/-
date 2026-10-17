@@ -56,6 +56,10 @@ namespace WorldSim.Core.Economy
         InvestedForImports = 36,
         InvestedForUnmetDemand = 37,
         GovernmentDecision = 38,
+        Married = 39,
+        Separated = 40,
+        LeftParentsHome = 41,
+        FamilyFollowed = 42,
     }
 
     /// <summary>What a daily total measures. Saved: append only.</summary>

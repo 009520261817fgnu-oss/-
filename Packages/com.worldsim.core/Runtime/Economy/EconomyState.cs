@@ -20,9 +20,14 @@ namespace WorldSim.Core.Economy
         public long UnemploymentBenefit = 2500;
         /// <summary>Yen per kWh paid by consumers to power companies.</summary>
         public double ElectricityPrice = 25;
+        /// <summary>
+        /// Rent per adult resident per day at an average location (S2). The city owns the housing
+        /// stock (municipal housing, an assumption of this stage); rent scales with land value.
+        /// </summary>
+        public long RentPerDay = 300;
 
         public static readonly string[] Keys =
-            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "unemploymentBenefit", "electricityPrice" };
+            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "unemploymentBenefit", "electricityPrice", "rent" };
 
         public double Get(string key)
         {
@@ -36,6 +41,7 @@ namespace WorldSim.Core.Economy
                 case "pension": return PensionPerDay;
                 case "unemploymentBenefit": return UnemploymentBenefit;
                 case "electricityPrice": return ElectricityPrice;
+                case "rent": return RentPerDay;
                 default: throw new ArgumentException($"Unknown policy '{key}'");
             }
         }
@@ -54,6 +60,7 @@ namespace WorldSim.Core.Economy
                 case "pension": if (v < 0 || v > 20000) return "年金は0〜20,000円/日"; PensionPerDay = (long)v; return null;
                 case "unemploymentBenefit": if (v < 0 || v > 20000) return "失業手当は0〜20,000円/日"; UnemploymentBenefit = (long)v; return null;
                 case "electricityPrice": if (v < 5 || v > 100) return "電気料金は5〜100円/kWh"; ElectricityPrice = v; return null;
+                case "rent": if (v < 0 || v > 5000) return "家賃は0〜5,000円/人日"; RentPerDay = (long)v; return null;
                 default: return $"未知の政策 '{key}'";
             }
         }

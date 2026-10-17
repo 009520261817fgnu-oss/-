@@ -22,6 +22,9 @@ namespace WorldSim.Core.Economy
         public int UnemployedDays;
         /// <summary>Net income received yesterday (wage or pension after tax).</summary>
         public long LastNetIncome;
+        /// <summary>Rent paid yesterday (S2: housing costs) and days in arrears.</summary>
+        public long LastRent;
+        public int RentArrearsDays;
         /// <summary>Share of desired food / goods / services bought yesterday (0..1).</summary>
         public float FoodMet = 1f, GoodsMet = 1f, ServicesMet = 1f;
         /// <summary>Days the student has spent at school (for education level at 18).</summary>

@@ -75,6 +75,7 @@ namespace WorldSim.Web
                 ["x"] = (double)p.X, ["z"] = (double)p.Z, ["heading"] = (double)p.Heading,
                 ["inside"] = p.InsideBuildingId, ["roomX"] = (double)p.RoomX, ["roomZ"] = (double)p.RoomZ,
                 ["activity"] = p.Activity.ToString(), ["hunger"] = (double)p.Hunger, ["energy"] = (double)p.Energy,
+                ["rent"] = (double)c.LastRent, ["rentDue"] = c.HomeId != 0 ? (double)HousingMarket.RentFor(w, c.HomeId) : 0, ["arrears"] = c.RentArrearsDays,
                 ["pantry"] = p.Pantry, ["goods"] = p.GoodsOwned, ["worked"] = (double)p.WorkedHours, ["absence"] = p.AbsenceDays,
                 ["study"] = p.StudyHours, ["studyNeeded"] = AvatarSystem.StudyHoursPerLevel,
                 ["travelTo"] = BuildingRef(w, p.TravelTo), ["arrive"] = p.TravelArrive,

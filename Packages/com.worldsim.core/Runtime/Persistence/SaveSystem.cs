@@ -51,6 +51,7 @@ namespace WorldSim.Core.Persistence
                 ["history"] = HistoryCodec.Encode(w.History),
                 ["player"] = Player(w.Player),
                 ["causes"] = Causes(w.Economy.Causes),
+                ["landValues"] = LandValues(w),
             };
             return Json.Serialize(root);
         }
@@ -101,12 +102,25 @@ namespace WorldSim.Core.Persistence
             // not real flows of the saved day, so they must not reach the cause record.
             Array.Clear(w.Economy.Causes.Money, 0, w.Economy.Causes.Money.Length);
             if (version >= 3) LoadCauses(w.Economy.Causes, Obj(root, "causes"));
+            if (root.ContainsKey("landValues"))
+            {
+                IList<object> lv = Arr(root, "landValues");
+                w.LandValueWeek = (long)D(lv[0]);
+                for (int i = 1; i + 1 < lv.Count; i += 2) w.LandValueIndex[I(lv[i])] = D(lv[i + 1]);
+            }
             w.RestoreNextId(root.GetInt("nextId"));
             return w;
         }
 
         /// <summary>Independent deep copy via save/load: the basis of history branching.</summary>
         public static WorldState Clone(WorldState w) => Load(w.Content, Save(w));
+
+        private static List<object> LandValues(WorldState w)
+        {
+            var l = new List<object> { (double)w.LandValueWeek };
+            foreach (var kv in w.LandValueIndex) { l.Add(kv.Key); l.Add(kv.Value); }
+            return l;
+        }
 
         // ------------------------------------------------------------------ causes (v3)
 
@@ -177,7 +191,7 @@ namespace WorldSim.Core.Persistence
                     c.Id, (double)c.Cash, (double)c.BirthDay, c.HomeId, c.JobId, c.Education, c.Retired,
                     (double)c.Happiness, (double)c.CommuteHours, c.UnemployedDays, (double)c.LastNetIncome,
                     (double)c.FoodMet, (double)c.GoodsMet, (double)c.ServicesMet, c.SchoolDays, c.TenureDays,
-                    Relations(c),
+                    Relations(c), (double)c.LastRent, c.RentArrearsDays,
                 });
             var companies = new List<object>();
             foreach (Company co in e.Companies.Values)
@@ -267,6 +281,7 @@ namespace WorldSim.Core.Persistence
                 if (a.Count > 15) c.TenureDays = I(a[15]);
                 if (a.Count > 16 && a[16] is IDictionary<string, object> rel)
                     foreach (var kv in rel) c.AddAffinity(int.Parse(kv.Key, CultureInfo.InvariantCulture), (float)D(kv.Value));
+                if (a.Count > 18) { c.LastRent = (long)D(a[17]); c.RentArrearsDays = I(a[18]); }
                 e.Citizens.Add(c.Id, c);
                 e.MoveIn(c, I(a[3]));
             }

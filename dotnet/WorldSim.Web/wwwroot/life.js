@@ -369,7 +369,8 @@ const Life = {
       ${dl([
         ['所持金', yen(s.cash)], ['仕事', job], ['日給', s.wage ? yen(s.wage) : '—'], ['今日', today],
         ['欠勤', s.absence ? `<span style="color:var(--warn)">${s.absence}日（3日を超えると解雇）</span>` : '0日'],
-        ['住まい', s.home ? esc(s.home.name) : 'なし'], ['通勤', s.commute ? `${s.commute.toFixed(0)}分` : '—'],
+        ['住まい', s.home ? esc(s.home.name) : 'なし'],
+        ['家賃（日）', s.home ? yen(s.rentDue) + (s.arrears ? `<span style="color:var(--bad)">（滞納${s.arrears}日・30日で退去）</span>` : '') : '—'], ['通勤', s.commute ? `${s.commute.toFixed(0)}分` : '—'],
         ['学歴', EDU[s.education] || s.education], ['職業訓練', s.education < 2 ? `${s.study}／${s.studyNeeded}時間` : '修了'],
         ['食料（自宅）', `${s.pantry}食分`], ['満足度', pct(s.happiness)],
       ])}

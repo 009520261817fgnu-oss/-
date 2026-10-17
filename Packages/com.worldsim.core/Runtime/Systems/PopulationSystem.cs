@@ -62,6 +62,7 @@ namespace WorldSim.Core.Systems
                     newborns.Add(new Citizen { BirthDay = today, Education = 0, SchoolDays = 0, Happiness = c.Happiness, HomeId = c.HomeId });
                 }
                 if (c.JobId != 0 && c.CommuteHours > MoveCommuteHours && rng.Chance(MoveCheckShare)) MoveCloserToWork(w, c, homes);
+                else if (c.HomeId != 0 && HousingMarket.RentBurden(c) > 0.5 && rng.Chance(MoveCheckShare)) MoveForCheaperRent(w, c, homes);
             }
             foreach (Citizen c in dying) { e.RemoveCitizen(c, e.City, Flow.Inheritance, Cause.Died); stats.Deaths++; }
             foreach (var (c, why) in leaving) { e.RemoveCitizen(c, e.External, Flow.Migration, why); stats.Emigrants++; }
@@ -96,8 +97,8 @@ namespace WorldSim.Core.Systems
             float bestScore = float.NegativeInfinity;
             foreach (Building b in homes)
             {
-                if (!Habitable(w, b)) continue;
-                float score = HomeScore(w, b, c.JobId);
+                if (!Habitable(w, b) || !HousingMarket.CanAfford(w, c, b.Id)) continue;
+                float score = HomeScore(w, b, c);
                 if (score > bestScore) { bestScore = score; best = b; }
             }
             if (best == null) return false;
@@ -106,16 +107,41 @@ namespace WorldSim.Core.Systems
             return true;
         }
 
-        /// <summary>Higher is better: short commute, clean air.</summary>
-        public static float HomeScore(WorldState w, Building home, int jobId)
+        /// <summary>
+        /// Higher is better: short commute, clean air, a good location (land value), affordable rent.
+        /// Low incomes weigh rent heavily, so they settle where land (and rent) is cheap.
+        /// </summary>
+        public static float HomeScore(WorldState w, Building home, Citizen c)
         {
             float score = -w.Environment.PollutionAt(home.Origin) * 0.05f;
-            if (jobId != 0)
+            if (c.JobId != 0)
             {
-                float h = w.Network.TravelHours(home.Id, jobId);
+                float h = w.Network.TravelHours(home.Id, c.JobId);
                 score -= float.IsPositiveInfinity(h) ? 100f : h * 4f;
             }
+            score += (float)(HousingMarket.LandValue(w, home.Id) / 100.0 * HousingMarket.LocationWeight(c));
+            score -= HousingMarket.RentFor(w, home.Id) / 1000f * HousingMarket.RentWeight(c);
             return score;
+        }
+
+        /// <summary>A household paying more than half its income in rent looks for a cheaper home it can reach.</summary>
+        private static void MoveForCheaperRent(WorldState w, Citizen c, List<Building> homes)
+        {
+            long current = HousingMarket.RentFor(w, c.HomeId);
+            Building best = null;
+            long bestRent = (long)(current * 0.85);
+            foreach (Building b in homes)
+            {
+                if (b.Id == c.HomeId || !Habitable(w, b)) continue;
+                if (c.JobId != 0 && w.Network.TravelHours(b.Id, c.JobId) > LaborSystem.MaxCommuteHours) continue;
+                long rent = HousingMarket.RentFor(w, b.Id);
+                if (rent < bestRent) { bestRent = rent; best = b; }
+            }
+            if (best == null) return;
+            w.Economy.MoveIn(c, best.Id);
+            w.Economy.Causes.Note(c.Id, Cause.MovedForCheaperRent, best.Id);
+            if (c.JobId != 0) c.CommuteHours = w.Network.TravelHours(best.Id, c.JobId);
+            w.Economy.Daily.Moves++;
         }
 
         private static void MoveCloserToWork(WorldState w, Citizen c, List<Building> homes)
@@ -242,6 +268,8 @@ namespace WorldSim.Core.Systems
                 {
                     t -= Math.Min(0.3, w.Environment.PollutionAt(home.Origin) / 100.0 * 0.3);
                     if (home.Condition < 0.7f) t -= 0.2;
+                    // Rent above 30% of income strains the household.
+                    t -= Math.Min(0.15, Math.Max(0, HousingMarket.RentBurden(c) - 0.3) * 0.5);
                 }
                 t -= (1 - energy) * 0.2;
                 t = Math.Max(0, Math.Min(1, t));

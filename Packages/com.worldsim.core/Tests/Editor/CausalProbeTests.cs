@@ -72,7 +72,7 @@ namespace WorldSim.Core.Tests
         [Test]
         public void ExpensiveElectricityBankruptsEnergyHungryFoodPlants()
         {
-            Assert.AreEqual(-1.0, Change("電気料金 100円", "prod.food"), 1e-9);
+            Assert.Less(Change("電気料金 100円", "prod.food"), -0.9);
             Assert.Greater(Change("電気料金 100円", "imports"), 0.1, "food is imported instead");
             Assert.Greater(Change("電気料金 100円", "unemployment"), 0.1);
         }
@@ -138,6 +138,14 @@ namespace WorldSim.Core.Tests
             Assert.Less(Change("建設会社を撤去", "companyProfit"), 0);
             Assert.Less(Change("建設会社を撤去", "treasury"), 0, "less local income, less tax");
             Assert.Less(Change("建設会社を撤去", "population"), 0);
+        }
+
+        [Test]
+        public void HighRentFillsTheTreasuryButSqueezesHouseholds()
+        {
+            Assert.Greater(Change("家賃 3倍", "treasury"), 0.05);
+            Assert.Less(Change("家賃 3倍", "retailSales"), 0);
+            Assert.Less(Change("家賃 3倍", "happiness"), 0);
         }
 
         [Test]

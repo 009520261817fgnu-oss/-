@@ -43,6 +43,7 @@ namespace WorldSim.Core.Economy
         Benefit,
         Tuition,
         Moving,
+        Rent,
     }
 
     /// <summary>Single path for every money movement; keeps per-day totals by flow for analysis.</summary>

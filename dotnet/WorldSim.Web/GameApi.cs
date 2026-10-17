@@ -341,6 +341,8 @@ namespace WorldSim.Web
                     long today = w.Clock.TotalDays;
                     bd["housing"] = b.Def.Housing;
                     bd["residents"] = residents.Count;
+                    bd["rent"] = (double)HousingMarket.RentFor(w, b.Id);
+                    bd["landValue"] = Math.Round(HousingMarket.LandValue(w, b.Id));
                     bd["employed"] = residents.Count(r => r.JobId != 0);
                     bd["children"] = residents.Count(r => r.AgeYears(today) < 18);
                     bd["retired"] = residents.Count(r => r.Retired);

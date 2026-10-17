@@ -68,10 +68,11 @@ namespace WorldSim.Core.Systems
             long today = w.Clock.TotalDays;
             foreach (Citizen c in e.Citizens.Values)
             {
-                if (c.Retired) c.LastNetIncome = l.TransferUpTo(e.City, c, p.PensionPerDay, Flow.Pension);
+                if (c.Retired) c.LastNetIncome += l.TransferUpTo(e.City, c, p.PensionPerDay, Flow.Pension);
                 else if (c.JobId == 0 && c.HomeId != 0 && c.IsWorkingAge(today))
-                    c.LastNetIncome = l.TransferUpTo(e.City, c, p.UnemploymentBenefit, Flow.Benefit);
+                    c.LastNetIncome += l.TransferUpTo(e.City, c, p.UnemploymentBenefit, Flow.Benefit);
             }
+            HousingMarket.CollectRent(w);
 
             long publicMaintenance = 0;
             foreach (Company co in e.Companies.Values)

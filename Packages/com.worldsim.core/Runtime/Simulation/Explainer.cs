@@ -192,6 +192,8 @@ namespace WorldSim.Core.Simulation
                 case Cause.PublicStaffing: return "公共・発電の定員変更";
                 case Cause.Disaster: return "災害";
                 case Cause.MovedCloserToWork: return "職場の近くへ転居";
+                case Cause.Evicted: return "家賃滞納で退去";
+                case Cause.MovedForCheaperRent: return "安い家賃の住まいへ転居";
                 default: return "理由の記録なし";
             }
         }
@@ -225,6 +227,7 @@ namespace WorldSim.Core.Simulation
                 case Flow.Benefit: return "失業手当";
                 case Flow.Tuition: return "職業訓練の授業料";
                 case Flow.Moving: return "引っ越し費用";
+                case Flow.Rent: return "家賃";
                 default: return f.ToString();
             }
         }

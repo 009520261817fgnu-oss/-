@@ -49,6 +49,8 @@ namespace WorldSim.Core.Economy
         PublicStaffing = 29,
         Disaster = 30,
         MovedCloserToWork = 31,
+        Evicted = 32,
+        MovedForCheaperRent = 33,
     }
 
     /// <summary>What a daily total measures. Saved: append only.</summary>

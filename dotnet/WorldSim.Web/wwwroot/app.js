@@ -33,6 +33,7 @@ const POLICY = {
   pension: { label: '年金（1日）', min: 0, max: 20000, step: 500, fmt: yen, help: '65歳以上の退職者に支給。' },
   preparedness: { label: '防災投資（1日）', min: 0, max: 20000000, step: 500000, fmt: yen, help: '積み重ねるほど災害の被害が減ります（最大50%）。' },
   repairBudget: { label: '復旧予算の上限（1日）', min: 0, max: 50000000, step: 1000000, fmt: yen, help: '被災した道路・建物の修理に使える上限。' },
+  rent: { label: '家賃（大人1人1日・標準地）', min: 0, max: 5000, step: 50, fmt: yen, help: '市営住宅の家賃。地価が高い場所ほど高く（0.5〜1.5倍）、所得の低い世帯は安い住まいを選びます。払えないと退去になります。' },
   electricityPrice: { label: '電気料金（kWh）', min: 5, max: 100, step: 1, fmt: (v) => v + '円', help: '発電所の収入、企業と家計の支出になります。' },
 };
 const SERIES = {
@@ -943,6 +944,7 @@ function renderInfo(el) {
       html += dl([['区分', CAT_NAMES[b.category]], ['状態', b.condition >= 1 ? '良好' : `${pct(b.condition)}（復旧待ち）`], ['道路接続', b.roadAccess ? 'あり' : '<span style="color:var(--bad)">なし</span>']]);
       if (b.housing) {
         html += `<h4>住民</h4>` + dl([['居住 / 定員', `${b.residents} / ${b.housing}`], ['就業者', b.employed], ['子ども・退職者', `${b.children}・${b.retired}`],
+          ['家賃（大人1人1日）', yen(b.rent)], ['地価指数', b.landValue],
           ['平均満足度', pct(b.happiness)], ['平均通勤', `${b.commute.toFixed(1)}分`], ['平均貯蓄', yen(b.savings)]]);
         if (b.sample) {
           const p = b.sample;

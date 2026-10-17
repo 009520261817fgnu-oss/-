@@ -104,6 +104,7 @@ namespace WorldSim.Core.Simulation
             new Intervention("産業補助 2万円", w => new SetPolicyCommand("industrySubsidy", 20000).Execute(w)),
             new Intervention("失業手当 0", w => new SetPolicyCommand("unemploymentBenefit", 0).Execute(w)),
             new Intervention("年金 0", w => new SetPolicyCommand("pension", 0).Execute(w)),
+            new Intervention("家賃 3倍", w => new SetPolicyCommand("rent", w.Economy.City.Policy.RentPerDay * 3).Execute(w)),
             new Intervention("電気料金 100円", w => new SetPolicyCommand("electricityPrice", 100).Execute(w)),
             new Intervention("発電所をすべて撤去", w => Remove(w, b => b.Def.Category == BuildingCategory.Power)),
             new Intervention("商店をすべて撤去", w => Remove(w, b => b.Def.Id == "shop")),

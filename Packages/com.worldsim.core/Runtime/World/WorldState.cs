@@ -33,6 +33,12 @@ namespace WorldSim.Core.World
         public Terrain Terrain { get; }
         public SimClock Clock { get; } = new SimClock();
         public DeterministicRandom Random { get; }
+        /// <summary>
+        /// Land value per building as computed at the start of <see cref="LandValueWeek"/> (S2 housing
+        /// market). Saved, so a loaded game prices housing exactly like the original.
+        /// </summary>
+        public readonly SortedDictionary<int, double> LandValueIndex = new SortedDictionary<int, double>();
+        public long LandValueWeek = -1;
         public int NextId { get; private set; } = 1;
 
         public EconomyState Economy { get; } = new EconomyState();

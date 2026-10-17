@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Core tests (NUnit)
+        run: cd dotnet && dotnet test
+      - name: Causal probe
+        run: cd dotnet && dotnet run -c Release --project WorldSim.Cli -- --days 60 --probe
+      - name: Ten years of simulation with save/load check
+        run: cd dotnet && dotnet run -c Release --project WorldSim.Cli -- --days 3650 --save /tmp/w.json | tail -3
+
+  web:
+    runs-on: ubuntu-latest
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Publish the web build
+        run: cd dotnet && ./publish-web.sh
+      - name: Install Playwright
+        run: npm install playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Browser tests
+        run: |
+          node dotnet/WorldSim.Web/tests/life.test.js /tmp
+          node dotnet/WorldSim.Web/tests/why.test.js /tmp

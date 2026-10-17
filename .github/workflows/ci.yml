@@ -18,6 +18,17 @@ jobs:
         run: cd dotnet && dotnet run -c Release --project WorldSim.Cli -- --days 60 --probe
       - name: Ten years of simulation with save/load check
         run: cd dotnet && dotnet run -c Release --project WorldSim.Cli -- --days 3650 --save /tmp/w.json | tail -3
+      - name: Benchmark (S and M worlds)
+        run: |
+          cd dotnet && dotnet run -c Release --project WorldSim.Cli -- --bench --bench-presets S,M --bench-out ../bench.json
+          # Baseline from docs/BENCHMARKS.md (S = 18.6 ms/day). Runners differ, so this only warns.
+          ms=$(jq '.results[] | select(.preset=="S") | .msPerDay' ../bench.json)
+          awk -v m="$ms" 'BEGIN { exit !(m > 28) }' && echo "::warning::S world takes $ms ms per simulated day (baseline 18.6)" || true
+          jq -e 'all(.results[]; .resumeMatches)' ../bench.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench
+          path: bench.json
 
   web:
     runs-on: ubuntu-latest

@@ -87,6 +87,17 @@ const check = (name, ok, extra) => { console.log((ok ? 'PASS ' : 'FAIL ') + name
   const health = await ev(`JSON.parse(api('Explain','population',30))`);
   check('population explanation available', health.ok, health.parts && health.parts.slice(0, 3).map((p) => p.label));
 
+  // S5-0: the in-browser benchmark runs on a throwaway branch and leaves the player's world alone.
+  const before = await ev(`JSON.parse(api('Branches')).map(b => b.id + ':' + b.days).join(',')`);
+  await ev(`showTab('about')`);
+  await page.click('#benchRun');
+  await page.waitForFunction(() => window.__benchResult || /失敗/.test(document.querySelector('#benchOut').textContent), null, { timeout: 120000 });
+  const bench = await ev(`window.__benchResult`);
+  check('benchmark reports numbers', !!bench && bench.msPerDay > 0 && bench.saveKB > 0 && bench.fps16x > 0, bench);
+  await ev(`setSpeed(0)`);
+  const after = await ev(`JSON.parse(api('Branches')).map(b => b.id + ':' + b.days).join(',')`);
+  check('benchmark leaves branches as they were', before.split(',').length === after.split(',').length, { before, after });
+
   // Phone layout.
   await page.setViewportSize({ width: 390, height: 844 });
   await ev(`Why.open('unemployment', 0)`);

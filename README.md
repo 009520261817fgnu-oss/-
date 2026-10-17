@@ -72,6 +72,7 @@ cd worldsim/dotnet
 dotnet test                                                              # 自動テスト158件
 dotnet run -c Release --project WorldSim.Cli -- --days 60 --probe        # 介入実験の表（5通りの乱数で偶然を判別）
 dotnet run -c Release --project WorldSim.Cli -- --days 3650 --save /tmp/w.json   # 10年連続実行と保存→読込の一致
+dotnet run -c Release --project WorldSim.Cli -- --bench                  # 規模別の性能計測（docs/BENCHMARKS.md）
 ./publish-web.sh                                                         # ブラウザ版を out/web/wwwroot に作る
 ```
 
@@ -107,6 +108,8 @@ docs/                                仕様・監査・計画・検証結果
 | [docs/CAUSAL_FINDINGS.md](docs/CAUSAL_FINDINGS.md) | 介入実験の結果と、各段階で見つけた不具合・設計上の問題 |
 | [docs/AUDIT.md](docs/AUDIT.md) | 最初の監査（確認済み・推測・未確認を区別） |
 | [docs/LIFE_MODE.md](docs/LIFE_MODE.md) | 人生体験モードの設計と状況 |
+| [docs/S5_PLAN.md](docs/S5_PLAN.md) | 大規模な世界（地域・複数都市・簡略計算）と3Dゲーム化の計画 |
+| [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | 規模別・端末別の性能の計測値 |
 | [docs/TASKS.md](docs/TASKS.md) | 段階ごとの進捗とテスト件数 |
 | [docs/SPEC.md](docs/SPEC.md) | 元の仕様書と変更履歴 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 初期の設計メモ |

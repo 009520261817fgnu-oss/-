@@ -1247,7 +1247,8 @@ function renderAbout(el) {
     <h4>まだ無い機能（今後）</h4><ul class="plain">
     <li>建物内部の自由な設計・モジュール式建築・自由形状の建築</li><li>鉄道・港・橋・トンネル、複数の都市や国家</li>
     <li>工場内部の設備配置、人生の節目の演出（結婚式・老後・相続など）</li><li>生態系（動物）・進化、外交・安全保障</li>
-    <li>AIによる改善提案、マルチプレイ、ユーザー作成コンテンツの読み込み画面</li></ul>`;
+    <li>AIによる改善提案、マルチプレイ、ユーザー作成コンテンツの読み込み画面</li></ul><div id="benchBox"></div>`;
+  if (typeof Bench !== 'undefined') Bench.render(el.querySelector('#benchBox'));
 }
 
 /* ------------------------------------------------------------------ frame loop */

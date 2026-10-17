@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -10,7 +11,7 @@ using WorldSim.Core.Simulation;
 using WorldSim.Core.World;
 
 // Headless runner for the WorldSim core.
-//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json] [--probe [--probe-days N]]
+//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json] [--probe [--probe-days N]] [--bench [--bench-out file.json] [--bench-presets S,M,L,XL]]
 ulong seed = 1;
 int days = 7;
 string png = null;
@@ -19,6 +20,9 @@ bool companies = false;
 bool profile = false;
 string savePath = null;
 bool probe = false;
+bool bench = false;
+string benchOut = null;
+string benchPresets = "S,M,L,XL";
 int probeDays = 90;
 for (int i = 0; i < args.Length; i++)
 {
@@ -32,6 +36,9 @@ for (int i = 0; i < args.Length; i++)
         case "--profile": profile = true; break;
         case "--save": savePath = args[++i]; break;
         case "--probe": probe = true; break;
+        case "--bench": bench = true; break;
+        case "--bench-out": benchOut = args[++i]; break;
+        case "--bench-presets": benchPresets = args[++i]; break;
         case "--probe-days": probeDays = int.Parse(args[++i]); break;
         default: Console.Error.WriteLine($"unknown argument {args[i]}"); return 2;
     }
@@ -40,6 +47,29 @@ for (int i = 0; i < args.Length; i++)
 string contentDir = Path.Combine(AppContext.BaseDirectory, "WorldSimContent");
 var docs = Directory.GetFiles(contentDir, "*.json").OrderBy(f => f, StringComparer.Ordinal).Select(File.ReadAllText).ToArray();
 ContentDatabase content = ContentDatabase.FromJson(docs);
+
+if (bench)
+{
+    // S5-0: the same measurements on every machine, so devices and versions can be compared.
+    var wanted = benchPresets.Split(',');
+    var results = BenchPreset.All.Where(p => wanted.Contains(p.Name)).Select(p => { var r = Benchmark.Run(content, p, seed); Console.Error.WriteLine($"  {p.Name} done"); return r; }).ToList();
+    Console.WriteLine($"WorldSim benchmark  {System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription}  {System.Runtime.InteropServices.RuntimeInformation.OSDescription}  {Environment.ProcessorCount} cores");
+    Console.Write(Benchmark.Table(results));
+    if (benchOut != null)
+    {
+        var doc = new Dictionary<string, object>
+        {
+            ["runtime"] = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+            ["os"] = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            ["cores"] = Environment.ProcessorCount,
+            ["date"] = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+            ["results"] = results.Select(r => (object)r.ToJson()).ToList(),
+        };
+        File.WriteAllText(benchOut, Json.Serialize(doc));
+        Console.WriteLine($"JSON written to {benchOut}");
+    }
+    return 0;
+}
 
 var sw = Stopwatch.StartNew();
 WorldState world = WorldFactory.Create(content, new WorldGenOptions { Seed = seed });

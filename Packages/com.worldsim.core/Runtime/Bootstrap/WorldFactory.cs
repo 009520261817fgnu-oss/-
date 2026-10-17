@@ -52,8 +52,9 @@ namespace WorldSim.Core.Bootstrap
                 new WeatherSystem(), new DisasterSystem(), new LaborSystem(), new EnergySystem(), new ResearchSystem(),
                 new ProductionSystem(), new LogisticsSystem(), new RetailSystem(), new FinanceSystem(), new PopulationSystem(),
                 new MarketSystem(), new TrafficSystem(), new PollutionSystem(), new RepairSystem(), new StatsHistorySystem(),
+                new InvestmentSystem(),
             };
-            // One system per in-game hour (01:00 weather ... 15:00 statistics), in dependency order.
+            // One system per in-game hour (01:00 weather ... 15:00 statistics, 16:00 investors), in dependency order.
             for (int i = 0; i < daily.Length; i++) runner.AddSystem(daily[i], i + 1);
             return runner;
         }

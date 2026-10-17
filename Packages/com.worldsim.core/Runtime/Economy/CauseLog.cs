@@ -53,6 +53,8 @@ namespace WorldSim.Core.Economy
         MovedForCheaperRent = 33,
         DiedOfIllness = 34,
         PriceCostPush = 35,
+        InvestedForImports = 36,
+        InvestedForUnmetDemand = 37,
     }
 
     /// <summary>What a daily total measures. Saved: append only.</summary>
@@ -72,6 +74,7 @@ namespace WorldSim.Core.Economy
         ExternalMoney = 10,
         /// <summary>Price change in log units ×1e6 (sub key = resource index × 64 + cause).</summary>
         PriceLog = 11,
+        CompaniesOpened = 12,
     }
 
     /// <summary>One noted event: who, why, and the other party (company or building id).</summary>

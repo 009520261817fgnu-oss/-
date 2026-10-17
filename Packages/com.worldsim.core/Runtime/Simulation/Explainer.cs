@@ -190,6 +190,8 @@ namespace WorldSim.Core.Simulation
                 case Cause.PriceSurplus: return "供給過剰（輸出に回る）";
                 case Cause.PriceBound: return "価格の上限・下限";
                 case Cause.PriceCostPush: return "費用の上昇を価格に転嫁";
+                case Cause.InvestedForImports: return "輸入超過を見た民間投資";
+                case Cause.InvestedForUnmetDemand: return "品不足を見た民間投資";
                 case Cause.PublicStaffing: return "公共・発電の定員変更";
                 case Cause.Disaster: return "災害";
                 case Cause.MovedCloserToWork: return "職場の近くへ転居";

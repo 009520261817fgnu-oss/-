@@ -25,9 +25,11 @@ namespace WorldSim.Core.Economy
         /// stock (municipal housing, an assumption of this stage); rent scales with land value.
         /// </summary>
         public long RentPerDay = 300;
+        /// <summary>1: outside investors may open businesses where demand is unmet (S3). 0: only the player builds.</summary>
+        public long PrivateInvestment = 1;
 
         public static readonly string[] Keys =
-            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "unemploymentBenefit", "electricityPrice", "rent" };
+            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "unemploymentBenefit", "electricityPrice", "rent", "privateInvestment" };
 
         public double Get(string key)
         {
@@ -42,6 +44,7 @@ namespace WorldSim.Core.Economy
                 case "unemploymentBenefit": return UnemploymentBenefit;
                 case "electricityPrice": return ElectricityPrice;
                 case "rent": return RentPerDay;
+                case "privateInvestment": return PrivateInvestment;
                 default: throw new ArgumentException($"Unknown policy '{key}'");
             }
         }
@@ -61,6 +64,7 @@ namespace WorldSim.Core.Economy
                 case "unemploymentBenefit": if (v < 0 || v > 20000) return "失業手当は0〜20,000円/日"; UnemploymentBenefit = (long)v; return null;
                 case "electricityPrice": if (v < 5 || v > 100) return "電気料金は5〜100円/kWh"; ElectricityPrice = v; return null;
                 case "rent": if (v < 0 || v > 5000) return "家賃は0〜5,000円/人日"; RentPerDay = (long)v; return null;
+                case "privateInvestment": if (v != 0 && v != 1) return "民間投資は 0（禁止）か 1（許可）"; PrivateInvestment = (long)v; return null;
                 default: return $"未知の政策 '{key}'";
             }
         }
@@ -148,6 +152,8 @@ namespace WorldSim.Core.Economy
         public readonly DailyCounters Daily = new DailyCounters();
         /// <summary>Why things changed (S1): noted by the systems, totalled per day.</summary>
         public readonly CauseLog Causes = new CauseLog();
+        /// <summary>Day of the last private investment (S3 investor agent), -1 if none.</summary>
+        public long LastInvestmentDay = -1;
 
         public EconomyState() { Ledger.Causes = Causes; }
 

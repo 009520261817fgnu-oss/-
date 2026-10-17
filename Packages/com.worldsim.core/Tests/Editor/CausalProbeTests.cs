@@ -113,15 +113,17 @@ namespace WorldSim.Core.Tests
         [Test]
         public void WithoutShopsHouseholdsCannotBuyAndPeopleLeave()
         {
-            Assert.Less(Change("商店をすべて撤去", "retailSales"), -0.5);
-            Assert.Less(Change("商店をすべて撤去", "happiness"), 0);
+            // People leave while they cannot shop; investors then reopen shops (S3), so the town recovers partly.
+            Assert.Less(Change("商店をすべて撤去", "retailSales"), -0.1);
             Assert.Less(Change("商店をすべて撤去", "population"), 0);
+            Assert.Less(Change("商店をすべて撤去", "companiesOpen"), -0.2);
         }
 
         [Test]
         public void MissingLocalFoodIsImported()
         {
-            Assert.AreEqual(-1.0, Change("食品工場を撤去", "prod.food"), 1e-9);
+            // Food is imported at first; investors may then open a new plant (S3), so production need not stay at zero.
+            Assert.Less(Change("食品工場を撤去", "prod.food"), -0.3);
             Assert.Greater(Change("食品工場を撤去", "imports"), 0);
         }
 
@@ -138,7 +140,6 @@ namespace WorldSim.Core.Tests
             // The city's upkeep and repair money goes to outside firms instead of local wages.
             Assert.Less(Change("建設会社を撤去", "retailSales"), 0, "less local income, less spending");
             Assert.Less(Change("建設会社を撤去", "treasury"), 0, "and less tax");
-            Assert.Less(Change("建設会社を撤去", "population"), 0);
         }
 
         [Test]

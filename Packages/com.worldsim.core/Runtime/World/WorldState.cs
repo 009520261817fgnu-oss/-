@@ -156,7 +156,7 @@ namespace WorldSim.Core.World
         /// access wins; a roadless one is returned (roadAccess = false) only when nothing better is
         /// close. Used by the placement UI and by probes that need "a home somewhere sensible".
         /// </summary>
-        public bool FindBuildableSpot(BuildingDef def, int x, int z, int radius, out GridPos origin, out bool roadAccess)
+        public bool FindBuildableSpot(BuildingDef def, int x, int z, int radius, out GridPos origin, out bool roadAccess, bool requireRoad = false)
         {
             origin = default;
             roadAccess = false;
@@ -172,9 +172,9 @@ namespace WorldSim.Core.World
                     if (HasRoadAccess(GridRect.FromSize(o, def.Width, def.Depth))) { origin = o; roadAccess = true; return true; }
                     if (!fallback) { fallback = true; origin = o; }
                 }
-                if (fallback && r >= 3) break; // a roadless spot nearby beats a far one with a road
+                if (fallback && r >= 3 && !requireRoad) break; // a roadless spot nearby beats a far one with a road
             }
-            return fallback;
+            return fallback && !requireRoad;
         }
 
         public CommandResult CanPlaceBuilding(BuildingDef def, GridPos origin)
@@ -195,15 +195,19 @@ namespace WorldSim.Core.World
             return CommandResult.Ok();
         }
 
-        public CommandResult TryPlaceBuilding(string defId, GridPos origin)
+        public CommandResult TryPlaceBuilding(string defId, GridPos origin) => TryPlaceBuilding(defId, origin, null);
+
+        /// <summary>Builds; the construction is paid by <paramref name="payer"/> (the city when null), e.g. a private investor.</summary>
+        public CommandResult TryPlaceBuilding(string defId, GridPos origin, Account payer)
         {
             if (!Content.TryGetBuilding(defId, out BuildingDef def)) return CommandResult.Fail($"未定義の建物 '{defId}'");
             CommandResult check = CanPlaceBuilding(def, origin);
             if (!check.Success) return check;
             if (ChargeConstruction)
             {
-                if (Economy.City.Cash < def.Cost) return CommandResult.Fail($"予算不足です（必要 {def.Cost / 10000:N0}万円）");
-                Economy.PayForWork(Economy.City, def.Cost, Flow.Construction);
+                payer = payer ?? Economy.City;
+                if (payer == Economy.City && Economy.City.Cash < def.Cost) return CommandResult.Fail($"予算不足です（必要 {def.Cost / 10000:N0}万円）");
+                Economy.PayForWork(payer, def.Cost, Flow.Construction);
             }
 
             GridRect r = GridRect.FromSize(origin, def.Width, def.Depth);

@@ -222,6 +222,7 @@ namespace WorldSim.Core.Persistence
                     ["points"] = city.Research.PointsYesterday,
                 },
                 ["prices"] = Dict(e.Market.Price),
+                ["lastInvestment"] = (double)e.LastInvestmentDay,
                 ["marketToday"] = new Dictionary<string, object>
                 {
                     ["produced"] = Dict(e.Market.Produced), ["traded"] = Dict(e.Market.LocalTraded),
@@ -262,6 +263,7 @@ namespace WorldSim.Core.Persistence
             ReadDict(Obj(mt, "imported"), e.Market.Imported);
             ReadDict(Obj(mt, "exported"), e.Market.Exported);
             ReadDict(Obj(mt, "unmet"), e.Market.Unmet);
+            if (o.ContainsKey("lastInvestment")) e.LastInvestmentDay = (long)o.GetDouble("lastInvestment");
             ReadLongs(Arr(o, "ledgerToday"), e.Ledger.Today);
             ReadLongs(Arr(o, "ledgerYesterday"), e.Ledger.Yesterday);
             var daily = Arr(o, "daily");

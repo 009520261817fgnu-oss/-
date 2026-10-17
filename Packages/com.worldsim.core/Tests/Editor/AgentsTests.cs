@@ -26,6 +26,47 @@ namespace WorldSim.Core.Tests
             Assert.AreEqual(1.0, x.Explained, 0.1);
         }
 
+        private static WorldState HungryVillage(bool allowInvestment)
+        {
+            // Residents with money but no shop anywhere: food demand goes unmet every day.
+            WorldState w = TestContent.Village(6, outsideRoad: true);
+            w.Economy.Ledger.Transfer(w.Economy.External, w.Economy.City, 300_000_000, Flow.Investment);
+            TestContent.PlaceSouth(w, "power_plant", 30);
+            new SetPolicyCommand("privateInvestment", allowInvestment ? 1 : 0).Execute(w);
+            WorldFactory.CreateRunner(w).StepMany(120 * SimClock.TicksPerDay);
+            return w;
+        }
+
+        [Test]
+        public void InvestorsOpenShopsWhereDemandGoesUnmet()
+        {
+            WorldState w = HungryVillage(true);
+            Company shop = w.Economy.Companies.Values.FirstOrDefault(c => c.Def.Id == "shop");
+            Assert.IsNotNull(shop, "an outside investor opened a shop");
+            Assert.That(w.Events.Any(e => e.Kind == "投資" && e.Message.Contains("品不足")), "with the reason logged");
+            Assert.That(w.Economy.Causes.Notes.Any(n => n.Cause == Cause.InvestedForUnmetDemand && n.Agent == shop.BuildingId));
+            Assert.AreEqual(0, w.Economy.TotalMoney());
+        }
+
+        [Test]
+        public void InvestmentCanBeSwitchedOff()
+        {
+            WorldState w = HungryVillage(false);
+            Assert.IsFalse(w.Economy.Companies.Values.Any(c => c.Def.Id == "shop"));
+        }
+
+        [Test]
+        public void InvestorsDoNotAddToStrugglingIndustries()
+        {
+            WorldState w = TestContent.Village(2);
+            Company plant = w.Economy.Companies[TestContent.PlaceSouth(w, "food_plant", 20)];
+            foreach (Citizen c in w.Economy.Citizens.Values.Take(15)) w.Economy.Hire(plant, c);
+            plant.ProfitAvg = 10_000;
+            Assert.IsTrue(InvestmentSystem.IncumbentsDoingWell(w, plant.Def));
+            plant.ProfitAvg = -10_000;
+            Assert.IsFalse(InvestmentSystem.IncumbentsDoingWell(w, plant.Def), "losing money: imports are a cost problem, not a capacity problem");
+        }
+
         [Test]
         public void UnitCostOnlyCountsLossMakingProducers()
         {

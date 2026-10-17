@@ -10,13 +10,14 @@ using WorldSim.Core.Simulation;
 using WorldSim.Core.World;
 
 // Headless runner for the WorldSim core.
-//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits]
+//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json]
 ulong seed = 1;
 int days = 7;
 string png = null;
 bool demoEdits = false;
 bool companies = false;
 bool profile = false;
+string savePath = null;
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -27,6 +28,7 @@ for (int i = 0; i < args.Length; i++)
         case "--demo-edits": demoEdits = true; break;
         case "--companies": companies = true; break;
         case "--profile": profile = true; break;
+        case "--save": savePath = args[++i]; break;
         default: Console.Error.WriteLine($"unknown argument {args[i]}"); return 2;
     }
 }
@@ -82,6 +84,17 @@ if (companies)
     }
 }
 Console.WriteLine($"State hash: {world.ComputeHash():X16}");
+Console.WriteLine($"Managed memory: {GC.GetTotalMemory(true) / 1048576.0:0.0} MB");
+if (savePath != null)
+{
+    sw.Restart();
+    string json = WorldSim.Core.Persistence.SaveSystem.Save(world);
+    double saveMs = sw.Elapsed.TotalMilliseconds;
+    File.WriteAllText(savePath, json);
+    sw.Restart();
+    var loaded = WorldSim.Core.Persistence.SaveSystem.Load(content, json);
+    Console.WriteLine($"Save: {json.Length / 1024.0:0} KB in {saveMs:0} ms, load {sw.Elapsed.TotalMilliseconds:0} ms, hash match {loaded.ComputeHash() == world.ComputeHash()}");
+}
 
 if (png != null)
 {

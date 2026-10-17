@@ -11,7 +11,7 @@ using WorldSim.Core.Simulation;
 using WorldSim.Core.World;
 
 // Headless runner for the WorldSim core.
-//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json] [--probe [--probe-days N]] [--bench [--bench-out file.json] [--bench-presets S,M,L,XL]]
+//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json] [--probe [--probe-days N]] [--bench [--bench-out file.json] [--bench-presets S,M,L,XL]] [--preset S|M|L|XL]
 ulong seed = 1;
 int days = 7;
 string png = null;
@@ -23,6 +23,7 @@ bool probe = false;
 bool bench = false;
 string benchOut = null;
 string benchPresets = "S,M,L,XL";
+string preset = null;
 int probeDays = 90;
 for (int i = 0; i < args.Length; i++)
 {
@@ -39,6 +40,7 @@ for (int i = 0; i < args.Length; i++)
         case "--bench": bench = true; break;
         case "--bench-out": benchOut = args[++i]; break;
         case "--bench-presets": benchPresets = args[++i]; break;
+        case "--preset": preset = args[++i]; break;
         case "--probe-days": probeDays = int.Parse(args[++i]); break;
         default: Console.Error.WriteLine($"unknown argument {args[i]}"); return 2;
     }
@@ -72,7 +74,7 @@ if (bench)
 }
 
 var sw = Stopwatch.StartNew();
-WorldState world = WorldFactory.Create(content, new WorldGenOptions { Seed = seed });
+WorldState world = WorldFactory.Create(content, preset == null ? new WorldGenOptions { Seed = seed } : BenchPreset.All.First(p => p.Name == preset).Options(seed));
 double genMs = sw.Elapsed.TotalMilliseconds;
 SimulationRunner runner = WorldFactory.CreateRunner(world);
 

@@ -19,7 +19,7 @@
 | 項目 | 状態 |
 |---|---|
 | シミュレーション本体 | 純C#（Unity非依存）、約8,200行 |
-| 自動テスト | 162件（NUnit）、約2,800行。GitHub Actions で毎回実行 |
+| 自動テスト | 163件（NUnit）、約2,800行。GitHub Actions で毎回実行 |
 | 遊べる版 | ブラウザ版（Blazor WebAssembly＋Three.js）。同じC#を実行。PC・iPad・スマホ幅で自動テスト済み |
 | Unity版 | 表示コードのみ。**Unity上での動作は未確認** |
 | 10年連続実行 | 人口 約1,270人、失業率 約2%、1日あたり約4ms、保存データ3.1MB（読込後も同じ未来になる） |
@@ -69,7 +69,7 @@
 ```bash
 git clone -b worldsim https://github.com/009520261817fgnu-oss/-.git worldsim
 cd worldsim/dotnet
-dotnet test                                                              # 自動テスト162件
+dotnet test                                                              # 自動テスト163件
 dotnet run -c Release --project WorldSim.Cli -- --days 60 --probe        # 介入実験の表（5通りの乱数で偶然を判別）
 dotnet run -c Release --project WorldSim.Cli -- --days 3650 --save /tmp/w.json   # 10年連続実行と保存→読込の一致
 dotnet run -c Release --project WorldSim.Cli -- --bench                  # 規模別の性能計測（docs/BENCHMARKS.md）

@@ -68,6 +68,12 @@ namespace WorldSim.Core.Bootstrap
             int cx = world.Width / 2, cz = world.Depth / 2;
             int x0 = cx - n * sp, z0 = cz - n * sp, x1 = cx + n * sp, z1 = cz + n * sp;
             int lines = 2 * n + 1;
+            // S5-2: a bigger town gets proportionally more industry, services and outskirts, so jobs keep
+            // pace with homes. The default town (radius 3) is the unit: one of each, a third of the
+            // block columns industrial.
+            int scale = Math.Max(1, (int)Math.Round(n * n / 9.0));
+            int industrialColumns = Math.Max(2, (int)Math.Round(2 * n / 3.0));
+            int centre = Math.Max(1, (int)Math.Round(n / 3.0)); // centre is (2·centre)² blocks
 
             // Road grid, segment by segment, so one bad segment (water, cliff) does not cancel the rest.
             for (int i = 0; i < lines; i++)
@@ -84,18 +90,21 @@ namespace WorldSim.Core.Bootstrap
             {
                 var rect = new GridRect(x0 + bx * sp + 1, z0 + bz * sp + 1, x0 + (bx + 1) * sp, z0 + (bz + 1) * sp);
                 int dx = bx - n, dz = bz - n; // block offset from centre, -n..n-1
-                Zone zone = (dx == -1 || dx == 0) && (dz == -1 || dz == 0) ? Zone.Center
-                    : dx >= n - 2 && dx != -1 && dx != 0 ? Zone.Industrial
+                bool centreX = dx >= -centre && dx < centre, centreZ = dz >= -centre && dz < centre;
+                Zone zone = centreX && centreZ ? Zone.Center
+                    : dx >= n - industrialColumns && !centreX ? Zone.Industrial
                     : Zone.Residential;
                 blocks.Add((rect, zone));
             }
 
             foreach (string id in new[] { "town_hall", "research_lab" }) PlaceFirst(world, blocks, Zone.Center, id);
-            foreach (string id in new[] { "school", "fire_station", "clinic", "park" }) PlaceFirst(world, blocks, Zone.Residential, id);
-            // Industry gets fixed quotas sized to the town; remaining industrial lots stay free for the player.
-            foreach (string id in new[] { "power_plant", "steel_mill", "food_plant", "food_plant", "food_plant",
-                         "factory", "factory", "warehouse", "warehouse", "construction" })
-                PlaceFirst(world, blocks, Zone.Industrial, id);
+            for (int k = 0; k < scale; k++)
+                foreach (string id in new[] { "school", "fire_station", "clinic", "park" }) PlaceFirst(world, blocks, Zone.Residential, id, k, scale);
+            // Industry gets quotas sized to the town; remaining industrial lots stay free for the player.
+            for (int k = 0; k < scale; k++)
+                foreach (string id in new[] { "power_plant", "steel_mill", "food_plant", "food_plant", "food_plant",
+                             "factory", "factory", "warehouse", "warehouse", "construction" })
+                    PlaceFirst(world, blocks, Zone.Industrial, id, k, scale);
 
             DeterministicRandom rng = world.Random;
             foreach (var (rect, zone) in blocks)
@@ -107,9 +116,9 @@ namespace WorldSim.Core.Bootstrap
             }
 
             var town = new GridRect(x0, z0, x1 + 1, z1 + 1);
-            PlaceOutskirts(world, town, "farm", 6, (w, c) => -Math.Abs(c.X - (town.MinX - 12)) * 0.5 - w.Terrain.CellMaxHeight(c));
-            PlaceOutskirts(world, town, "mine", 2, (w, c) => w.Terrain.CellMaxHeight(c) - Distance(c, town) * 1.5);
-            PlaceOutskirts(world, town, "forestry", 2, (w, c) => ForestAround(w, c) - Distance(c, town) * 30);
+            PlaceOutskirts(world, town, "farm", 6 * scale, (w, c) => -Math.Abs(c.X - (town.MinX - 12)) * 0.5 - w.Terrain.CellMaxHeight(c));
+            PlaceOutskirts(world, town, "mine", 2 * scale, (w, c) => w.Terrain.CellMaxHeight(c) - Distance(c, town) * 1.5);
+            PlaceOutskirts(world, town, "forestry", 2 * scale, (w, c) => ForestAround(w, c) - Distance(c, town) * 30);
         }
 
         private static void BuildHighway(WorldState w, int x0, int z0, int x1, int z1, int sp)
@@ -213,14 +222,17 @@ namespace WorldSim.Core.Bootstrap
             return false;
         }
 
-        private static void PlaceFirst(WorldState world, List<(GridRect rect, Zone zone)> blocks, Zone zone, string defId)
+        /// <summary>
+        /// Places the building in the first block of the zone where it fits. Copy k of n starts k/n of
+        /// the way through the zone, so the copies in a big town spread out instead of clustering.
+        /// </summary>
+        private static void PlaceFirst(WorldState world, List<(GridRect rect, Zone zone)> blocks, Zone zone, string defId, int copy = 0, int copies = 1)
         {
             if (!world.Content.TryGetBuilding(defId, out BuildingDef def)) return;
-            foreach (var (rect, z) in blocks)
-            {
-                if (z != zone) continue;
-                if (TryPlaceInBlock(world, rect, def)) return;
-            }
+            var inZone = blocks.Where(b => b.zone == zone).Select(b => b.rect).ToList();
+            int start = inZone.Count * copy / Math.Max(1, copies);
+            for (int i = 0; i < inZone.Count; i++)
+                if (TryPlaceInBlock(world, inZone[(start + i) % inZone.Count], def)) return;
         }
 
         private static bool TryPlaceInBlock(WorldState world, GridRect block, BuildingDef def)

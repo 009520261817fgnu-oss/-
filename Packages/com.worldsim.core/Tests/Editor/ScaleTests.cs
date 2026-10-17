@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using WorldSim.Core.Bootstrap;
+using WorldSim.Core.Content;
 using WorldSim.Core.Economy;
 using WorldSim.Core.Persistence;
 using WorldSim.Core.Simulation;
@@ -132,6 +133,32 @@ namespace WorldSim.Core.Tests
                 int cost = cells.Sum(c => w.Network.CellCost(c));
                 Assert.AreEqual(w.Network.TravelHours(a, b), cost / RoadNetwork.UnitsPerHour + RoadNetwork.TripOverheadHours);
             }
+        }
+
+        /// <summary>S5-2: a bigger town gets jobs in proportion, so it is not structurally short of work.</summary>
+        [Test]
+        public void BiggerTownHasSimilarUnemployment()
+        {
+            ContentDatabase content = TestContent.Load();
+            double Unemployment(string preset, out WorldState w)
+            {
+                w = WorldFactory.Create(content, BenchPreset.All.First(p => p.Name == preset).Options(1));
+                WorldFactory.CreateRunner(w).StepMany(120 * SimClock.TicksPerDay);
+                return w.History.Skip(w.History.Count - 14).Average(s => s.UnemploymentRate);
+            }
+            double small = Unemployment("S", out WorldState s0), medium = Unemployment("M", out WorldState m);
+            Assert.Greater(m.Economy.Citizens.Count, s0.Economy.Citizens.Count * 2);
+            Assert.Less(Math.Abs(medium - small), 0.05, $"S {small:P1}, M {medium:P1}");
+            // Services, industry and the centre grow with the town.
+            int Count(WorldState w, string id) => w.Buildings.Count(b => b.Def.Id == id);
+            Assert.Greater(Count(m, "office"), Count(s0, "office"));
+            Assert.Greater(Count(m, "school"), Count(s0, "school"));
+            Assert.Greater(Count(m, "factory"), Count(s0, "factory"));
+            // The default town keeps its old pace and cap; a big one scales up.
+            Assert.AreEqual(Systems.InvestmentSystem.MinDaysBetween, Systems.InvestmentSystem.DaysBetween(s0));
+            Assert.AreEqual(Systems.LaborSystem.MaxApplicantsPerDay, Systems.LaborSystem.ApplicantsPerDay(s0));
+            Assert.Less(Systems.InvestmentSystem.DaysBetween(m), Systems.InvestmentSystem.MinDaysBetween);
+            Assert.Greater(Systems.LaborSystem.ApplicantsPerDay(m), Systems.LaborSystem.MaxApplicantsPerDay);
         }
 
         [Test]

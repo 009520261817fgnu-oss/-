@@ -24,7 +24,19 @@ namespace WorldSim.Core.Systems
         public string Name => "Labor";
         public int IntervalTicks => SimClock.TicksPerDay;
 
-        public void Tick(WorldState w) => Run(w, MaxApplicantsPerDay);
+        public void Tick(WorldState w) => Run(w, ApplicantsPerDay(w));
+
+        /// <summary>
+        /// 400 a day for a town of up to InvestmentSystem.ReferenceLabour workers, proportionally more in a
+        /// bigger one (S5-2): applicants are taken in id order, so a fixed cap would leave the newest
+        /// residents of a big town never applying.
+        /// </summary>
+        public static int ApplicantsPerDay(WorldState w)
+        {
+            int labour = w.History.Count > 0 ? w.History[w.History.Count - 1].LabourForce : 0;
+            return labour <= InvestmentSystem.ReferenceLabour ? MaxApplicantsPerDay
+                : (int)((long)MaxApplicantsPerDay * labour / InvestmentSystem.ReferenceLabour);
+        }
 
         public static void Run(WorldState w, int maxApplicants)
         {

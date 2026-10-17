@@ -286,26 +286,9 @@ namespace WorldSim.Web
         [JSInvokable]
         public static string FindSpot(string defId, int x, int z, int radius)
         {
-            WorldState w = World;
-            if (!_content.TryGetBuilding(defId, out BuildingDef def)) return "{\"found\":false}";
-            int fx = 0, fz = 0;
-            bool fallback = false;
-            for (int r = 0; r <= Math.Min(40, radius); r++)
-            {
-                for (int dz = -r; dz <= r; dz++)
-                for (int dx = -r; dx <= r; dx++)
-                {
-                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r) continue;
-                    var o = new GridPos(x + dx, z + dz);
-                    if (!w.CanPlaceBuilding(def, o).Success) continue;
-                    if (w.HasRoadAccess(GridRect.FromSize(o, def.Width, def.Depth)))
-                        return Json.Serialize(new Dictionary<string, object> { ["found"] = true, ["x"] = o.X, ["z"] = o.Z, ["warn"] = false });
-                    if (!fallback) { fallback = true; fx = o.X; fz = o.Z; }
-                }
-                if (fallback && r >= 3) break; // a roadless spot nearby beats a far one with a road
-            }
-            if (!fallback) return "{\"found\":false}";
-            return Json.Serialize(new Dictionary<string, object> { ["found"] = true, ["x"] = fx, ["z"] = fz, ["warn"] = true });
+            if (!_content.TryGetBuilding(defId, out BuildingDef def)
+                || !World.FindBuildableSpot(def, x, z, radius, out GridPos o, out bool road)) return "{\"found\":false}";
+            return Json.Serialize(new Dictionary<string, object> { ["found"] = true, ["x"] = o.X, ["z"] = o.Z, ["warn"] = !road });
         }
 
         [JSInvokable]

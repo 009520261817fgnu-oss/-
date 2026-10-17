@@ -145,6 +145,32 @@ namespace WorldSim.Core.World
 
         // ---------------------------------------------------------------- buildings
 
+        /// <summary>
+        /// Nearest buildable origin around (x, z), searched in growing squares. A spot with road
+        /// access wins; a roadless one is returned (roadAccess = false) only when nothing better is
+        /// close. Used by the placement UI and by probes that need "a home somewhere sensible".
+        /// </summary>
+        public bool FindBuildableSpot(BuildingDef def, int x, int z, int radius, out GridPos origin, out bool roadAccess)
+        {
+            origin = default;
+            roadAccess = false;
+            bool fallback = false;
+            for (int r = 0; r <= Math.Min(40, radius); r++)
+            {
+                for (int dz = -r; dz <= r; dz++)
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    if (Math.Max(Math.Abs(dx), Math.Abs(dz)) != r) continue;
+                    var o = new GridPos(x + dx, z + dz);
+                    if (!CanPlaceBuilding(def, o).Success) continue;
+                    if (HasRoadAccess(GridRect.FromSize(o, def.Width, def.Depth))) { origin = o; roadAccess = true; return true; }
+                    if (!fallback) { fallback = true; origin = o; }
+                }
+                if (fallback && r >= 3) break; // a roadless spot nearby beats a far one with a road
+            }
+            return fallback;
+        }
+
         public CommandResult CanPlaceBuilding(BuildingDef def, GridPos origin)
         {
             if (def.RequiresTech != null && !Effects.IsResearched(def.RequiresTech))

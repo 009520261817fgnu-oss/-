@@ -10,7 +10,7 @@ using WorldSim.Core.Simulation;
 using WorldSim.Core.World;
 
 // Headless runner for the WorldSim core.
-//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json]
+//   dotnet run --project WorldSim.Cli -- [--seed N] [--days N] [--png map.png] [--demo-edits] [--profile] [--companies] [--save file.json] [--probe [--probe-days N]]
 ulong seed = 1;
 int days = 7;
 string png = null;
@@ -18,6 +18,8 @@ bool demoEdits = false;
 bool companies = false;
 bool profile = false;
 string savePath = null;
+bool probe = false;
+int probeDays = 90;
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -29,6 +31,8 @@ for (int i = 0; i < args.Length; i++)
         case "--companies": companies = true; break;
         case "--profile": profile = true; break;
         case "--save": savePath = args[++i]; break;
+        case "--probe": probe = true; break;
+        case "--probe-days": probeDays = int.Parse(args[++i]); break;
         default: Console.Error.WriteLine($"unknown argument {args[i]}"); return 2;
     }
 }
@@ -58,6 +62,19 @@ if (demoEdits)
         new PlaceBuildingCommand("factory", new GridPos(cx, cz)), // occupied: must fail
     };
     foreach (IWorldCommand cmd in edits) Console.WriteLine($"  {cmd.GetType().Name,-22} -> {cmd.Execute(world)}");
+}
+
+if (probe)
+{
+    // Causal probe: warm up for --days, then one intervention per run against the same saved state.
+    runner.StepMany(days * SimClock.TicksPerDay);
+    string baseSave = WorldSim.Core.Persistence.SaveSystem.Save(world);
+    sw.Restart();
+    ProbeResult baseline = CausalProbe.Run(content, baseSave, null, probeDays);
+    var results = CausalProbe.Standard().Select(iv => CausalProbe.Run(content, baseSave, iv, probeDays)).ToList();
+    Console.WriteLine($"Probe: warm-up {days} days, {probeDays} days per run, last 14 days averaged ({sw.Elapsed.TotalSeconds:0.0} s)");
+    Console.Write(CausalProbe.Table(baseline, results));
+    return 0;
 }
 
 runner.Profile = profile;

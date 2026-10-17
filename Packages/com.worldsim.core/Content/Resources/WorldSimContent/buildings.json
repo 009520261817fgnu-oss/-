@@ -22,6 +22,7 @@
     { "id": "school",       "name": "学校",     "category": "Public", "width": 3, "depth": 3, "height": 8,  "color": "#F0E6C8", "cost": 15000000, "params": { "minEducation": 1, "wagePremium": 1.15, "jobs": 12, "energy": 300, "students": 300, "maintenance": 30000 } },
     { "id": "research_lab", "name": "研究所",   "category": "Public", "width": 3, "depth": 3, "height": 10, "color": "#B8E0D8", "cost": 25000000, "params": { "minEducation": 2, "wagePremium": 1.15, "jobs": 12, "energy": 600, "research": 3, "maintenance": 40000 } },
     { "id": "clinic",       "name": "診療所",   "category": "Public", "width": 2, "depth": 2, "height": 6, "color": "#9FD3C7", "cost": 10000000, "params": { "minEducation": 1, "wagePremium": 1.15, "jobs": 10, "energy": 200, "patients": 120, "maintenance": 30000 } },
+    { "id": "park",         "name": "公園",     "category": "Public", "width": 3, "depth": 3, "height": 1, "color": "#6FAF5B", "cost": 4000000, "params": { "jobs": 2, "leisure": 1, "maintenance": 8000 } },
     { "id": "fire_station", "name": "消防・復旧センター", "category": "Public", "width": 2, "depth": 2, "height": 7, "color": "#D84A3A", "cost": 8000000, "params": { "wagePremium": 1.15, "jobs": 10, "energy": 150, "repairCrews": 3, "maintenance": 30000 } }
   ]
 }

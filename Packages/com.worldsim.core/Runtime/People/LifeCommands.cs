@@ -151,6 +151,7 @@ namespace WorldSim.Core.People
             if (co != null && co.Closed) return "休業中です";
             if (co != null && co.IsRetail) return hour >= 8 && hour < 21 ? null : "営業時間外です（8〜21時）";
             if (b.Def.Id == "town_hall" || b.Def.Id == "school") return hour >= 8 && hour < 18 ? null : "開館時間外です（8〜18時）";
+            if (b.Def.GetParam("leisure") > 0) return null; // parks are open to everyone, day and night
             return "関係者以外は入れません（ここで働くと入れます）";
         }
     }

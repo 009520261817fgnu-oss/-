@@ -91,7 +91,7 @@ namespace WorldSim.Core.Bootstrap
             }
 
             foreach (string id in new[] { "town_hall", "research_lab" }) PlaceFirst(world, blocks, Zone.Center, id);
-            foreach (string id in new[] { "school", "fire_station", "clinic" }) PlaceFirst(world, blocks, Zone.Residential, id);
+            foreach (string id in new[] { "school", "fire_station", "clinic", "park" }) PlaceFirst(world, blocks, Zone.Residential, id);
             // Industry gets fixed quotas sized to the town; remaining industrial lots stay free for the player.
             foreach (string id in new[] { "power_plant", "steel_mill", "food_plant", "food_plant", "food_plant",
                          "factory", "factory", "warehouse", "warehouse", "construction" })

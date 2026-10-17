@@ -123,7 +123,7 @@ namespace WorldSim.Core.Simulation
         }
 
         /// <summary>
-        /// Land value index per building (0..200): shops and jobs within reach raise it, pollution and
+        /// Land value index per building (0..200): shops, jobs and parks within reach raise it, pollution and
         /// damage lower it. Used for overlays and to explain where people want to live.
         /// </summary>
         public static Dictionary<int, double> LandValues(WorldState w)
@@ -131,19 +131,22 @@ namespace WorldSim.Core.Simulation
             var result = new Dictionary<int, double>();
             var retail = new List<int>();
             var employers = new List<Company>();
+            var parks = new List<int>();
             foreach (Company co in w.Economy.Companies.Values)
             {
                 if (co.Closed) continue;
                 if (co.IsRetail) retail.Add(co.BuildingId);
+                if (co.Def.GetParam("leisure") > 0) parks.Add(co.BuildingId);
                 employers.Add(co);
             }
             foreach (Building b in w.Buildings)
             {
                 if (!w.Network.HasAccess(b.Id)) { result[b.Id] = 0; continue; }
-                double shops = 0, jobs = 0;
+                double shops = 0, jobs = 0, green = 0;
+                foreach (int p in parks) if (w.Network.TravelHours(b.Id, p) < 0.15f) green++;
                 foreach (int r in retail) if (w.Network.TravelHours(b.Id, r) < 0.15f) shops++;
                 foreach (Company co in employers) if (w.Network.TravelHours(b.Id, co.BuildingId) < 0.25f) jobs += co.Workers.Count;
-                double v = 60 + Math.Min(60, shops * 6) + Math.Min(80, jobs / 10.0)
+                double v = 60 + Math.Min(60, shops * 6) + Math.Min(80, jobs / 10.0) + Math.Min(30, green * 15)
                            - w.Environment.PollutionAt(b.Origin) * 1.5 - (1 - b.Condition) * 60;
                 result[b.Id] = Math.Max(0, Math.Min(200, v));
             }

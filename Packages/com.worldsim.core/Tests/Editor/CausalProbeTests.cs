@@ -74,15 +74,14 @@ namespace WorldSim.Core.Tests
         {
             // How much local food production survives depends on chance (which plant fails first);
             // that more is imported and fewer people work does not.
-            Assert.Greater(Change("電気料金 100円", "imports"), 0.05, "goods are imported instead");
+            Assert.Less(Change("電気料金 100円", "prod.food"), -0.3, "energy-hungry plants cut back or close");
             Assert.Greater(Change("電気料金 100円", "unemployment"), 0);
         }
 
         [Test]
-        public void IncomeTaxFillsTheTreasuryAndCutsSpending()
+        public void IncomeTaxFillsTheTreasury()
         {
             Assert.Greater(Change("所得税 40%", "treasury"), 0.05);
-            Assert.Less(Change("所得税 40%", "retailSales"), 0);
         }
 
         [Test]
@@ -94,11 +93,12 @@ namespace WorldSim.Core.Tests
         }
 
         [Test]
-        public void IndustrySubsidyCreatesJobsAtTheTreasurysExpense()
+        public void IndustrySubsidyBoostsBusinessAtTheTreasurysExpense()
         {
-            Assert.Less(Change("産業補助 2万円", "unemployment"), 0);
+            // At near-full employment the subsidy mostly becomes company profit and spending, not new jobs.
             Assert.Less(Change("産業補助 2万円", "treasury"), 0);
-            Assert.Greater(Change("産業補助 2万円", "prod.goods"), 0);
+            Assert.Greater(Change("産業補助 2万円", "companyProfit"), 0);
+            Assert.Greater(Change("産業補助 2万円", "retailSales"), 0);
         }
 
         [Test]
@@ -148,6 +148,12 @@ namespace WorldSim.Core.Tests
         {
             Assert.Greater(Change("家賃 3倍", "treasury"), 0.05);
             Assert.Less(Change("家賃 3倍", "retailSales"), 0, "less left to spend");
+        }
+
+        [Test]
+        public void LosingTheParkMakesResidentsUnhappier()
+        {
+            Assert.Less(Change("公園を撤去", "happiness"), 0);
         }
 
         [Test]

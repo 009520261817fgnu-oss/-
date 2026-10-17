@@ -261,6 +261,9 @@ namespace WorldSim.Core.Economy
         public void RemoveCitizen(Citizen c, Account heir, Flow flow, Cause cause = Cause.Unspecified)
         {
             Fire(c, cause);
+            // Whoever stays behind is no longer in a couple (widowed, or the partner moved away).
+            if (c.PartnerId != 0 && Citizens.TryGetValue(c.PartnerId, out Citizen partner) && partner.PartnerId == c.Id) partner.PartnerId = 0;
+            c.PartnerId = 0;
             MoveIn(c, 0);
             Ledger.Transfer(c, heir, c.Cash, flow);
             Citizens.Remove(c.Id);

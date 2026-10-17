@@ -102,7 +102,7 @@ namespace WorldSim.Core.Systems
                 stats.Births++;
             }
             Immigrate(w, today, homes);
-            Households.LeaveParents(w, today, rng, homes, (c, except) => FindHome(w, c, homes, except, alone: true));
+            Households.LeaveParents(w, today, rng, homes, (c, except) => FindHome(w, c, homes, except, alone: c.PartnerId == 0));
         }
 
         public static List<Building> ResidentialBuildings(WorldState w)
@@ -124,6 +124,7 @@ namespace WorldSim.Core.Systems
         {
             EconomyState e = w.Economy;
             List<Citizen> members = alone ? new List<Citizen> { c } : Households.Members(e, c, w.Clock.TotalDays);
+            if (except != 0) members.RemoveAll(m => m != c && m.PartnerId != c.Id); // leaving the parents: the couple goes, siblings stay
             Building best = null;
             float bestScore = float.NegativeInfinity;
             foreach (Building b in homes)
@@ -301,10 +302,31 @@ namespace WorldSim.Core.Systems
             }
         }
 
+        public const double ParkHappiness = 0.05;
+        public const float ParkReachHours = 0.1f;
+
+        /// <summary>Homes within a short walk (by road) of an open park (S4 leisure).</summary>
+        public static HashSet<int> ParkNeighbourhood(WorldState w)
+        {
+            var parks = new List<int>();
+            foreach (Company co in w.Economy.Companies.Values)
+                if (co.Def.GetParam("leisure") > 0 && !co.Closed && w.TryGetBuilding(co.BuildingId, out Building pb) && pb.Condition >= 0.5f) parks.Add(co.BuildingId);
+            var near = new HashSet<int>();
+            if (parks.Count == 0) return near;
+            foreach (Building b in w.Buildings)
+            {
+                if (b.Def.Housing == 0) continue;
+                foreach (int p in parks)
+                    if (w.Network.TravelHours(b.Id, p) <= ParkReachHours) { near.Add(b.Id); break; }
+            }
+            return near;
+        }
+
         private static void UpdateHappiness(WorldState w, long today)
         {
             EconomyState e = w.Economy;
             double energy = w.Environment.EnergyRatio;
+            HashSet<int> nearPark = ParkNeighbourhood(w);
             foreach (Citizen c in e.Citizens.Values)
             {
                 double t = 0.45;
@@ -318,6 +340,7 @@ namespace WorldSim.Core.Systems
                 {
                     t -= Math.Min(0.3, w.Environment.PollutionAt(home.Origin) / 100.0 * 0.3);
                     if (home.Condition < 0.7f) t -= 0.2;
+                    if (nearPark.Contains(home.Id)) t += ParkHappiness;
                     // Rent above 30% of income strains the household.
                     t -= Math.Min(0.15, Math.Max(0, HousingMarket.RentBurden(c) - 0.3) * 0.5);
                 }

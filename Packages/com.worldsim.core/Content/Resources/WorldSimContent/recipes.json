@@ -5,7 +5,7 @@
     { "id": "harvest_wood",     "outputs": { "wood": 80 } },
     { "id": "smelt_steel",      "inputs": { "iron_ore": 40 }, "optionalInputs": { "services": 2 }, "outputs": { "steel": 20 } },
     { "id": "process_food",     "inputs": { "grain": 30 },    "optionalInputs": { "services": 2 }, "outputs": { "food": 60 } },
-    { "id": "make_goods",       "inputs": { "steel": 5, "wood": 10 }, "optionalInputs": { "services": 2 }, "outputs": { "goods": 15 } },
+    { "id": "make_goods",       "inputs": { "steel": 5, "wood": 10 }, "optionalInputs": { "services": 2 }, "outputs": { "goods": 20 } },
     { "id": "provide_services", "outputs": { "services": 80 } }
   ]
 }

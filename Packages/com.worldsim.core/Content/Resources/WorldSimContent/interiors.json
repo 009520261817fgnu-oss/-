@@ -37,6 +37,12 @@
         { "type": "sofa",        "label": "待合室（休む）",         "x": 7.0, "z": 2.0, "w": 3.0, "d": 1.0 },
         { "type": "workstation", "label": "受付・医局（働く）",     "x": 7.5, "z": 6.5, "w": 3.0, "d": 1.2 }
       ] },
+    { "id": "park", "for": ["park"], "width": 24, "depth": 24, "door": [12, 0],
+      "fixtures": [
+        { "type": "sofa",        "label": "ベンチ（休む）",     "x": 6.0,  "z": 10.0, "w": 3.0, "d": 0.8 },
+        { "type": "sofa",        "label": "芝生（くつろぐ）",   "x": 14.0, "z": 14.0, "w": 6.0, "d": 6.0 },
+        { "type": "workstation", "label": "管理小屋（働く）",   "x": 1.0,  "z": 20.0, "w": 2.5, "d": 2.5 }
+      ] },
     { "id": "public", "for": ["Public"], "width": 14, "depth": 10, "door": [7, 0],
       "fixtures": [
         { "type": "workstation", "label": "職場（働く）", "x": 3.0, "z": 5.0, "w": 8.0, "d": 1.5 }

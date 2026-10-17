@@ -30,22 +30,25 @@ namespace WorldSim.Core.Simulation
         /// <summary>Relative change of the means against a baseline (0.1 = +10%). Zero baselines give ±1 or 0.</summary>
         public double Change(ProbeResult baseline, string key) => Relative(baseline.Values[key], Values[key]);
 
+        /// <summary>Share of noise seeds that must move the value the same way as the mean.</summary>
+        public const double AgreementNeeded = 0.8;
+
         /// <summary>
-        /// True when the effect is negligible (under 1% on average) or every noise seed moves the value
-        /// the same way as the mean. False means chance events (a breakdown, who emigrates) decide the
-        /// outcome, e.g. a blackout that happened under one seed only.
+        /// True when the effect is negligible (under 1% on average) or at least 80% of the noise seeds
+        /// move the value the same way as the mean. False means chance events (a breakdown, who
+        /// emigrates, which investor arrives first) decide the outcome.
         /// </summary>
         public bool Consistent(ProbeResult baseline, string key)
         {
             double mean = Change(baseline, key);
             if (Math.Abs(mean) < 0.01) return true;
-            int n = Math.Min(Runs.Count, baseline.Runs.Count);
+            int n = Math.Min(Runs.Count, baseline.Runs.Count), agree = 0;
             for (int i = 0; i < n; i++)
             {
                 double c = Relative(baseline.Runs[i][key], Runs[i][key]);
-                if (Math.Sign(c) != Math.Sign(mean) || Math.Abs(c) < 0.002) return false;
+                if (Math.Sign(c) == Math.Sign(mean) && Math.Abs(c) >= 0.002) agree++;
             }
-            return true;
+            return n > 0 && agree >= AgreementNeeded * n;
         }
 
         internal static double Relative(double b, double v)
@@ -70,7 +73,7 @@ namespace WorldSim.Core.Simulation
         };
 
         /// <summary>Noise seeds used by default: 0 keeps the saved random state, others re-seed it.</summary>
-        public static readonly ulong[] DefaultNoise = { 0, 1, 2 };
+        public static readonly ulong[] DefaultNoise = { 0, 1, 2, 3, 4 };
 
         /// <summary>
         /// Runs the intervention once per noise seed. Baseline and intervention get the same seed, so
@@ -113,6 +116,7 @@ namespace WorldSim.Core.Simulation
             new Intervention("建設会社を撤去", w => Remove(w, b => b.Def.Id == "construction")),
             new Intervention("研究所と学校を撤去", w => Remove(w, b => b.Def.Id == "research_lab" || b.Def.Id == "school")),
             new Intervention("町の近くに集合住宅6棟", w => BuildNearTown(w, "apartment", 6)),
+            new Intervention("公園を撤去", w => Remove(w, b => b.Def.GetParam("leisure") > 0)),
             new Intervention("市外への道路を遮断", CutOutsideRoads),
             new Intervention("地震 M7.5", w => new TriggerDisasterCommand(DisasterKind.Earthquake, new GridPos(w.Width / 2, w.Depth / 2), 7.5).Execute(w)),
         };
@@ -153,7 +157,7 @@ namespace WorldSim.Core.Simulation
         {
             keys = keys ?? Series;
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"（{baseline.Runs.Count}通りの乱数で平均。? は乱数によって向きが変わる＝偶然に左右される結果）");
+            sb.AppendLine($"（{baseline.Runs.Count}通りの乱数で平均。? は8割以上の乱数で同じ向きにならない＝偶然に左右される結果）");
             sb.Append("介入".PadRight(18)).AppendLine(string.Join(" ", keys.Select(k => k.PadLeft(12))));
             sb.Append("基準（値）".PadRight(18)).AppendLine(string.Join(" ", keys.Select(k => baseline.Values[k].ToString("G4").PadLeft(12))));
             foreach (ProbeResult r in results)

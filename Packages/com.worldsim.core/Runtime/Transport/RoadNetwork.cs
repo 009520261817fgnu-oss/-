@@ -6,9 +6,14 @@ namespace WorldSim.Core.Transport
 {
     /// <summary>
     /// Road graph derived from the world grid (one node per usable road cell, 4-neighbour edges).
-    /// Answers building-to-building travel times and routes with Dijkstra trees cached per origin.
+    /// Answers building-to-building travel times and routes with Dijkstra trees cached per root.
     /// Travel time per cell depends on tech (road speed) and yesterday's traffic (congestion).
     /// This is a cache: it is rebuilt from world state and never saved.
+    ///
+    /// Costs are whole microhours, so a trip costs exactly the same in both directions (S5-1). That
+    /// lets one tree rooted at a business answer the trips of every home that commutes or shops
+    /// there: about a third as many trees as one per origin. Routes are always read from the
+    /// destination's tree, so they do not depend on which trees happen to be cached (save/load).
     /// </summary>
     public sealed class RoadNetwork
     {
@@ -24,22 +29,30 @@ namespace WorldSim.Core.Transport
         public const float OutsideHours = 1.0f;
         /// <summary>Vehicles per day a road cell carries before congestion grows quickly.</summary>
         public const float CellCapacityPerDay = 1000f;
+        /// <summary>Cost units per hour (integer costs keep sums exact and symmetric).</summary>
+        public const float UnitsPerHour = 1_000_000f;
+        private const int Unreachable = int.MaxValue;
 
         private readonly WorldState _w;
         private bool _dirty = true;
         private int[] _nodeOfCell;
         private int[] _cellOfNode = Array.Empty<int>();
-        private float[] _nodeHours = Array.Empty<float>();
+        private int[] _nodeCost = Array.Empty<int>();
         private int[][] _adj = Array.Empty<int[]>();
         private readonly Dictionary<int, int[]> _access = new Dictionary<int, int[]>();
         private readonly Dictionary<int, Tree> _trees = new Dictionary<int, Tree>();
         private Tree _outside;
+        private readonly Stack<Tree> _spare = new Stack<Tree>();
+        private MinHeap _heap;
 
         public RoadNetwork(WorldState world) { _w = world; }
 
         /// <summary>Increments whenever travel times may have changed.</summary>
         public int Version { get; private set; }
         public int NodeCount { get { EnsureBuilt(); return _cellOfNode.Length; } }
+        /// <summary>Diagnostics for benchmarks: shortest-path trees computed and full rebuilds so far.</summary>
+        public long TreesComputed { get; private set; }
+        public long Rebuilds { get; private set; }
 
         /// <summary>Road topology, speeds or congestion changed.</summary>
         public void Invalidate()
@@ -52,7 +65,7 @@ namespace WorldSim.Core.Transport
         public void InvalidateBuilding(int buildingId)
         {
             _access.Remove(buildingId);
-            _trees.Remove(buildingId);
+            if (_trees.TryGetValue(buildingId, out Tree old)) { _spare.Push(old); _trees.Remove(buildingId); }
             Version++;
         }
 
@@ -61,7 +74,7 @@ namespace WorldSim.Core.Transport
             get
             {
                 EnsureBuilt();
-                foreach (float d in _outside.Dist) if (d < float.PositiveInfinity) return true;
+                foreach (int d in _outside.Dist) if (d != Unreachable) return true;
                 return false;
             }
         }
@@ -71,22 +84,43 @@ namespace WorldSim.Core.Transport
         {
             if (fromBuilding == toBuilding) return 0f;
             EnsureBuilt();
-            int[] dst = Access(toBuilding);
-            if (dst.Length == 0) return float.PositiveInfinity;
-            Tree t = TreeFrom(fromBuilding);
-            if (t == null) return float.PositiveInfinity;
-            float best = float.PositiveInfinity;
-            foreach (int n in dst) if (t.Dist[n] < best) best = t.Dist[n];
-            return best + TripOverheadHours;
+            int[] a = Access(fromBuilding), b = Access(toBuilding);
+            if (a.Length == 0 || b.Length == 0) return float.PositiveInfinity;
+            // Symmetric costs: any tree rooted at either end gives the same answer. Prefer one that is
+            // already built, then the end that is a business (fewer of those than homes).
+            Tree t;
+            int[] other;
+            if (_trees.TryGetValue(toBuilding, out t)) other = a;
+            else if (_trees.TryGetValue(fromBuilding, out t)) other = b;
+            else if (IsBusiness(toBuilding) && !IsBusiness(fromBuilding)) { t = TreeFrom(toBuilding); other = a; }
+            else { t = TreeFrom(fromBuilding); other = b; }
+            int best = Nearest(t, other, out _);
+            return best == Unreachable ? float.PositiveInfinity : best / UnitsPerHour + TripOverheadHours;
+        }
+
+        /// <summary>
+        /// TravelHours(from, targets[i]) for many targets at once, read from the targets' trees (the
+        /// values are identical to single calls; this only skips the per-call lookups).
+        /// </summary>
+        public void TravelHoursMany(int fromBuilding, IReadOnlyList<int> targets, float[] result)
+        {
+            EnsureBuilt();
+            int[] a = Access(fromBuilding);
+            for (int i = 0; i < targets.Count; i++)
+            {
+                int to = targets[i];
+                if (to == fromBuilding) { result[i] = 0f; continue; }
+                int best = a.Length == 0 ? Unreachable : Nearest(TreeFrom(to), a, out _);
+                result[i] = best == Unreachable ? float.PositiveInfinity : best / UnitsPerHour + TripOverheadHours;
+            }
         }
 
         /// <summary>Hours from a building to the outside market via the nearest map-edge road.</summary>
         public float HoursToOutside(int building)
         {
             EnsureBuilt();
-            float best = float.PositiveInfinity;
-            foreach (int n in Access(building)) if (_outside.Dist[n] < best) best = _outside.Dist[n];
-            return best + TripOverheadHours + OutsideHours;
+            int best = Nearest(_outside, Access(building), out _);
+            return best == Unreachable ? float.PositiveInfinity : best / UnitsPerHour + TripOverheadHours + OutsideHours;
         }
 
         /// <summary>Road cells (as world cell indices) along the fastest route, empty if unreachable.</summary>
@@ -94,15 +128,21 @@ namespace WorldSim.Core.Transport
         {
             var cells = new List<int>();
             EnsureBuilt();
-            Tree t = TreeFrom(fromBuilding);
-            int[] dst = Access(toBuilding);
-            if (t == null || dst.Length == 0) return cells;
-            int end = -1;
-            float best = float.PositiveInfinity;
-            foreach (int n in dst) if (t.Dist[n] < best) { best = t.Dist[n]; end = n; }
-            for (int n = end; n >= 0; n = t.Parent[n]) cells.Add(_cellOfNode[n]);
-            cells.Reverse();
+            // Walk the destination's tree from the origin's nearest access point towards its root.
+            Tree t = TreeFrom(toBuilding);
+            int[] src = Access(fromBuilding);
+            if (t == null || src.Length == 0 || Nearest(t, src, out int start) == Unreachable) return cells;
+            for (int n = start; n >= 0; n = t.Parent[n]) cells.Add(_cellOfNode[n]);
             return cells;
+        }
+
+        /// <summary>Adds <paramref name="vehicles"/> to every road cell on the fastest route (to 0 = the outside).</summary>
+        public void AddRouteVolume(int fromBuilding, int toBuilding, float vehicles, float[] volume)
+        {
+            EnsureBuilt();
+            Tree t = toBuilding == 0 ? _outside : TreeFrom(toBuilding);
+            if (Nearest(t, Access(fromBuilding), out int start) == Unreachable) return;
+            for (int n = start; n >= 0; n = t.Parent[n]) volume[_cellOfNode[n]] += vehicles;
         }
 
         /// <summary>Road cells from the building to the map edge, empty if not connected.</summary>
@@ -110,14 +150,32 @@ namespace WorldSim.Core.Transport
         {
             var cells = new List<int>();
             EnsureBuilt();
-            int start = -1;
-            float best = float.PositiveInfinity;
-            foreach (int n in Access(building)) if (_outside.Dist[n] < best) { best = _outside.Dist[n]; start = n; }
+            if (Nearest(_outside, Access(building), out int start) == Unreachable) return cells;
             for (int n = start; n >= 0; n = _outside.Parent[n]) cells.Add(_cellOfNode[n]);
             return cells;
         }
 
         public bool HasAccess(int building) { EnsureBuilt(); return Access(building).Length > 0; }
+
+        /// <summary>Cost of passing a road cell in cost units (see UnitsPerHour), -1 if it is not a usable road.</summary>
+        public int CellCost(int cell)
+        {
+            EnsureBuilt();
+            int n = _nodeOfCell[cell];
+            return n < 0 ? -1 : _nodeCost[n];
+        }
+
+        private bool IsBusiness(int building) => _w.Economy.Companies.ContainsKey(building);
+
+        /// <summary>Smallest tree distance among the nodes (first such node in order), or Unreachable.</summary>
+        private static int Nearest(Tree t, int[] nodes, out int node)
+        {
+            node = -1;
+            int best = Unreachable;
+            if (t == null) return best;
+            foreach (int n in nodes) if (t.Dist[n] < best) { best = t.Dist[n]; node = n; }
+            return best;
+        }
 
         private int[] Access(int building)
         {
@@ -155,7 +213,9 @@ namespace WorldSim.Core.Transport
         {
             if (!_dirty) return;
             _dirty = false;
+            Rebuilds++;
             _access.Clear();
+            foreach (Tree old in _trees.Values) _spare.Push(old);
             _trees.Clear();
 
             int w = _w.Width, d = _w.Depth;
@@ -168,18 +228,19 @@ namespace WorldSim.Core.Transport
                 else _nodeOfCell[i] = -1;
             }
             _cellOfNode = cells.ToArray();
+            if (_spare.Count > 0 && _spare.Peek().Dist.Length != _cellOfNode.Length) _spare.Clear();
 
             float speed = BaseSpeedKmh * (float)(1 + _w.Effects.Global("roadSpeed"));
             float baseHours = _w.Terrain.CellSize / 1000f / Math.Max(1f, speed);
             float[] traffic = _w.CongestionBasis;
-            _nodeHours = new float[_cellOfNode.Length];
+            _nodeCost = new int[_cellOfNode.Length];
             _adj = new int[_cellOfNode.Length][];
             var nb = new List<int>(4);
             for (int n = 0; n < _cellOfNode.Length; n++)
             {
                 int cell = _cellOfNode[n];
                 float ratio = traffic[cell] / CellCapacityPerDay;
-                _nodeHours[n] = baseHours * Math.Min(10f, 1f + 0.15f * ratio * ratio * ratio * ratio);
+                _nodeCost[n] = Math.Max(1, (int)Math.Round(baseHours * Math.Min(10f, 1f + 0.15f * ratio * ratio * ratio * ratio) * UnitsPerHour));
                 int x = cell % w, z = cell / w;
                 nb.Clear();
                 if (x > 0 && _nodeOfCell[cell - 1] >= 0) nb.Add(_nodeOfCell[cell - 1]);
@@ -200,29 +261,43 @@ namespace WorldSim.Core.Transport
 
         private Tree Dijkstra(int[] sources)
         {
+            TreesComputed++;
             int n = _cellOfNode.Length;
-            var t = new Tree(n);
-            var heap = new MinHeap(Math.Max(16, n));
+            Tree t = _spare.Count > 0 ? _spare.Pop() : new Tree(n);
+            t.Reset();
+            MinHeap heap = _heap ??= new MinHeap(Math.Max(16, n));
+            heap.Clear();
             foreach (int s in sources)
             {
-                if (_nodeHours[s] < t.Dist[s])
+                if (_nodeCost[s] < t.Dist[s])
                 {
-                    t.Dist[s] = _nodeHours[s];
+                    t.Dist[s] = _nodeCost[s];
                     heap.Push(t.Dist[s], s);
                 }
             }
+            // Most road cells lie inside a straight or curved run with exactly two neighbours. Instead of
+            // queueing each of them, walk the run from a settled node until it reaches a junction or a
+            // dead end (queued as usual) or stops improving: along a run, distances from this side rise
+            // and those from the other side fall, so once a cell is not improved none further are.
+            // The distances are exactly those of plain Dijkstra; only ties between equal routes may
+            // pick a different (still deterministic) parent.
             while (heap.Count > 0)
             {
-                heap.Pop(out float du, out int u);
+                heap.Pop(out int du, out int u);
                 if (du > t.Dist[u]) continue;
-                foreach (int v in _adj[u])
+                foreach (int first in _adj[u])
                 {
-                    float nd = du + _nodeHours[v];
-                    if (nd < t.Dist[v])
+                    int prev = u, v = first, d = du;
+                    while (true)
                     {
+                        int nd = d + _nodeCost[v];
+                        if (nd >= t.Dist[v]) break;
                         t.Dist[v] = nd;
-                        t.Parent[v] = u;
-                        heap.Push(nd, v);
+                        t.Parent[v] = prev;
+                        int[] nv = _adj[v];
+                        if (nv.Length != 2) { heap.Push(nd, v); break; }
+                        int next = nv[0] == prev ? nv[1] : nv[0];
+                        prev = v; v = next; d = nd;
                     }
                 }
             }
@@ -231,14 +306,19 @@ namespace WorldSim.Core.Transport
 
         private sealed class Tree
         {
-            public readonly float[] Dist;
+            public readonly int[] Dist;
             public readonly int[] Parent;
 
             public Tree(int n)
             {
-                Dist = new float[n];
+                Dist = new int[n];
                 Parent = new int[n];
-                for (int i = 0; i < n; i++) { Dist[i] = float.PositiveInfinity; Parent[i] = -1; }
+            }
+
+            public void Reset()
+            {
+                Array.Fill(Dist, Unreachable);
+                Array.Fill(Parent, -1);
             }
         }
     }
@@ -246,17 +326,18 @@ namespace WorldSim.Core.Transport
     /// <summary>Binary min-heap of (priority, value); netstandard2.1 has no PriorityQueue.</summary>
     internal sealed class MinHeap
     {
-        private float[] _keys;
+        private int[] _keys;
         private int[] _vals;
         public int Count { get; private set; }
+        public void Clear() => Count = 0;
 
         public MinHeap(int capacity)
         {
-            _keys = new float[capacity];
+            _keys = new int[capacity];
             _vals = new int[capacity];
         }
 
-        public void Push(float key, int val)
+        public void Push(int key, int val)
         {
             if (Count == _keys.Length)
             {
@@ -276,12 +357,12 @@ namespace WorldSim.Core.Transport
             _vals[i] = val;
         }
 
-        public void Pop(out float key, out int val)
+        public void Pop(out int key, out int val)
         {
             key = _keys[0];
             val = _vals[0];
             Count--;
-            float k = _keys[Count];
+            int k = _keys[Count];
             int v = _vals[Count];
             int i = 0;
             while (true)

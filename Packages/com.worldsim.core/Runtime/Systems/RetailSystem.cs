@@ -21,8 +21,13 @@ namespace WorldSim.Core.Systems
         public const double SpendShareOfIncome = 0.85;
         public const double SpendShareOfSavings = 0.01;
 
-        private readonly Dictionary<int, List<int>> _nearbyRetail = new Dictionary<int, List<int>>();
+        // Per home: for each resource, the reachable shops selling it, nearest first. Filtering by resource
+        // here (not per purchase) keeps the order and the outcome identical while scanning far fewer shops.
+        private readonly Dictionary<int, Dictionary<string, int[]>> _nearbyRetail = new Dictionary<int, Dictionary<string, int[]>>();
         private int _cacheVersion = -1;
+        private readonly List<int> _retailIds = new List<int>();
+        private float[] _hours;
+        private long[] _keys;
 
         public string Name => "Retail";
         public int IntervalTicks => SimClock.TicksPerDay;
@@ -33,6 +38,7 @@ namespace WorldSim.Core.Systems
             if (_cacheVersion != w.Network.Version)
             {
                 _nearbyRetail.Clear();
+                _retailIds.Clear();
                 _cacheVersion = w.Network.Version;
             }
             long today = w.Clock.TotalDays;
@@ -42,7 +48,7 @@ namespace WorldSim.Core.Systems
             {
                 if (c.HomeId == 0 || c.AgeYears(today) < 18) continue;
                 if (c.Id == w.Player.CitizenId) continue; // the player shops in person
-                List<int> shops = NearbyRetail(w, c.HomeId);
+                Dictionary<string, int[]> shops = NearbyRetail(w, c.HomeId);
                 double budget = Math.Min(c.Cash, SpendShareOfIncome * c.LastNetIncome + SpendShareOfSavings * c.Cash);
                 double spent = 0;
 
@@ -60,17 +66,18 @@ namespace WorldSim.Core.Systems
         }
 
         /// <summary>Buys up to <paramref name="wanted"/> units while total spending stays within <paramref name="cap"/>.</summary>
-        private static double Purchase(WorldState w, Citizen c, List<int> shops, string res, double wanted, double cap,
+        private static double Purchase(WorldState w, Citizen c, Dictionary<string, int[]> shopsByRes, string res, double wanted, double cap,
             ref double spent, SortedDictionary<long, int> visits)
         {
             EconomyState e = w.Economy;
             double basePrice = e.Market.GetPrice(res);
             double bought = 0;
             bool first = true;
+            int[] shops = shopsByRes.TryGetValue(res, out int[] l) ? l : Array.Empty<int>();
             foreach (int id in shops)
             {
                 if (bought >= wanted - 1e-9) break;
-                if (!e.Companies.TryGetValue(id, out Company shop) || shop.Closed || !shop.Sells(res) || shop.Workers.Count == 0) continue;
+                if (!e.Companies.TryGetValue(id, out Company shop) || shop.Closed || shop.Workers.Count == 0) continue;
                 if (first)
                 {
                     // Demand is recorded at the preferred shop so it restocks even after selling out.
@@ -98,21 +105,36 @@ namespace WorldSim.Core.Systems
         }
 
         /// <summary>Retailers reachable from a home within the shopping radius, nearest first.</summary>
-        private List<int> NearbyRetail(WorldState w, int homeId)
+        private Dictionary<string, int[]> NearbyRetail(WorldState w, int homeId)
         {
-            if (_nearbyRetail.TryGetValue(homeId, out List<int> list)) return list;
-            var found = new List<(float h, int id)>();
-            foreach (Company co in w.Economy.Companies.Values)
+            if (_nearbyRetail.TryGetValue(homeId, out Dictionary<string, int[]> byRes)) return byRes;
+            if (_retailIds.Count == 0)
             {
-                if (!co.IsRetail) continue;
-                float h = w.Network.TravelHours(homeId, co.BuildingId);
-                if (h <= MaxShoppingHours) found.Add((h, co.BuildingId));
+                foreach (Company co in w.Economy.Companies.Values) if (co.IsRetail) _retailIds.Add(co.BuildingId);
+                _hours = new float[_retailIds.Count];
+                _keys = new long[_retailIds.Count];
             }
-            found.Sort((a, b) => a.h != b.h ? a.h.CompareTo(b.h) : a.id.CompareTo(b.id));
-            list = new List<int>(found.Count);
-            foreach (var f in found) list.Add(f.id);
-            _nearbyRetail[homeId] = list;
-            return list;
+            w.Network.TravelHoursMany(homeId, _retailIds, _hours);
+            // Nearest first, ties by id: non-negative floats order like their bit patterns.
+            int found = 0;
+            for (int i = 0; i < _retailIds.Count; i++)
+                if (_hours[i] <= MaxShoppingHours)
+                    _keys[found++] = ((long)BitConverter.SingleToInt32Bits(_hours[i]) << 32) | (uint)_retailIds[i];
+            Array.Sort(_keys, 0, found);
+            var lists = new Dictionary<string, List<int>>();
+            for (int i = 0; i < found; i++)
+            {
+                int id = (int)(_keys[i] & 0xFFFFFFFF);
+                foreach (string res in w.Economy.Companies[id].Def.Sells)
+                {
+                    if (!lists.TryGetValue(res, out List<int> l)) lists[res] = l = new List<int>();
+                    l.Add(id);
+                }
+            }
+            byRes = new Dictionary<string, int[]>();
+            foreach (var kv in lists) byRes[kv.Key] = kv.Value.ToArray();
+            _nearbyRetail[homeId] = byRes;
+            return byRes;
         }
     }
 }

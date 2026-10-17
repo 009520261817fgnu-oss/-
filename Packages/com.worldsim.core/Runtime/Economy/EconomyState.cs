@@ -144,9 +144,9 @@ namespace WorldSim.Core.Economy
         public const long CityStartFunds = 300_000_000;
         public const long RoadCostPerCell = 50_000;
 
-        public readonly SortedDictionary<int, Citizen> Citizens = new SortedDictionary<int, Citizen>();
+        public readonly IdMap<Citizen> Citizens = new IdMap<Citizen>();
         /// <summary>Employers keyed by building id.</summary>
-        public readonly SortedDictionary<int, Company> Companies = new SortedDictionary<int, Company>();
+        public readonly IdMap<Company> Companies = new IdMap<Company>();
         /// <summary>Residents per residential building id.</summary>
         public readonly SortedDictionary<int, int> Occupancy = new SortedDictionary<int, int>();
         public readonly City City = new City();

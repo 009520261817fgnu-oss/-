@@ -1,7 +1,7 @@
 'use strict';
 /* Performance measurement in the browser (S5-0): the same numbers the CLI benchmark reports, measured on
    this device — WebAssembly time per simulated day, save/load time, memory and the frame rate while
-   the game runs at 16×. Started from the 概要 tab. Loaded after app.js. */
+   the game runs at 16×. Started from the 概要 tab, or by opening the page with "?bench". Loaded after app.js. */
 
 const Bench = {
   running: false,
@@ -78,3 +78,13 @@ const Bench = {
     });
   },
 };
+
+// Opening the page with "?bench" runs the measurement as soon as the town is ready.
+if (/[?&]bench\b/.test(location.search)) {
+  const wait = setInterval(() => {
+    if (typeof S === 'undefined' || !S.status) return;
+    clearInterval(wait);
+    showTab('about');
+    document.querySelector('#benchRun')?.click();
+  }, 500);
+}

@@ -98,6 +98,12 @@ const check = (name, ok, extra) => { console.log((ok ? 'PASS ' : 'FAIL ') + name
   const after = await ev(`JSON.parse(api('Branches')).map(b => b.id + ':' + b.days).join(',')`);
   check('benchmark leaves branches as they were', before.split(',').length === after.split(',').length, { before, after });
 
+  // "?bench" starts the same measurement on its own.
+  await page.goto('http://localhost:8765/?bench');
+  await page.waitForFunction(() => window.__benchResult, null, { timeout: 180000 });
+  check('?bench runs the measurement', (await ev(`window.__benchResult.msPerDay`)) > 0);
+  await ev(`setSpeed(0)`);
+
   // Phone layout.
   await page.setViewportSize({ width: 390, height: 844 });
   await ev(`Why.open('unemployment', 0)`);

@@ -98,8 +98,7 @@ namespace WorldSim.Core.Systems
             foreach (var kv in pairs)
             {
                 int from = (int)(kv.Key >> 32), to = (int)(kv.Key & 0xFFFFFFFF);
-                List<int> cells = to == 0 ? w.Network.RouteCellsToOutside(from) : w.Network.RouteCells(from, to);
-                foreach (int cell in cells) volume[cell] += kv.Value;
+                w.Network.AddRouteVolume(from, to, kv.Value, volume);
             }
             float[] tv = w.TrafficVolume;
             for (int i = 0; i < tv.Length; i++) tv[i] = tv[i] * 0.5f + volume[i] * 0.5f;

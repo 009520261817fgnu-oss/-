@@ -37,6 +37,7 @@ namespace WorldSim.Core.Simulation
     {
         public string Preset;
         public int Regions = 1, Population, Companies, Buildings, RoadCells;
+        public double TreesPerDay, RebuildsPerDay;
         public double MsPerDay, GenerateMs, SaveMs, LoadMs, MemoryMB, SaveKB, Unemployment;
         public bool ResumeMatches;
         public SortedDictionary<string, double> SystemMsPerDay = new SortedDictionary<string, double>(StringComparer.Ordinal);
@@ -47,7 +48,7 @@ namespace WorldSim.Core.Simulation
             ["buildings"] = Buildings, ["roadCells"] = RoadCells, ["msPerDay"] = Math.Round(MsPerDay, 2),
             ["generateMs"] = Math.Round(GenerateMs), ["saveMs"] = Math.Round(SaveMs), ["loadMs"] = Math.Round(LoadMs),
             ["memoryMB"] = Math.Round(MemoryMB, 1), ["saveKB"] = Math.Round(SaveKB), ["unemployment"] = Math.Round(Unemployment, 4),
-            ["resumeMatches"] = ResumeMatches,
+            ["resumeMatches"] = ResumeMatches, ["treesPerDay"] = Math.Round(TreesPerDay, 1), ["rebuildsPerDay"] = Math.Round(RebuildsPerDay, 2),
             ["systemMsPerDay"] = SystemMsPerDay.ToDictionary(kv => kv.Key, kv => (object)Math.Round(kv.Value, 2)),
         };
     }
@@ -70,6 +71,7 @@ namespace WorldSim.Core.Simulation
 
             var times = new List<double>();
             runner.Profile = true;
+            long trees0 = w.Network.TreesComputed, rebuilds0 = w.Network.Rebuilds;
             for (int i = 0; i < blocks; i++)
             {
                 sw.Restart();
@@ -78,6 +80,8 @@ namespace WorldSim.Core.Simulation
             }
             times.Sort();
             r.MsPerDay = times[times.Count / 2];
+            r.TreesPerDay = (w.Network.TreesComputed - trees0) / (double)(blockDays * blocks);
+            r.RebuildsPerDay = (w.Network.Rebuilds - rebuilds0) / (double)(blockDays * blocks);
             foreach (var kv in runner.ProfileMs) r.SystemMsPerDay[kv.Key] = kv.Value / (blockDays * blocks);
 
             GC.Collect();
@@ -105,11 +109,11 @@ namespace WorldSim.Core.Simulation
         public static string Table(IEnumerable<BenchResult> results)
         {
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("規模  人口    企業  建物  道路   1日(ms)  メモリ(MB)  保存(KB)  保存/読込(ms)  失業率  再開一致  重いシステム");
+            sb.AppendLine("規模  人口    企業  建物  道路   1日(ms)  メモリ(MB)  保存(KB)  保存/読込(ms)  失業率  再開一致  経路木/日  重いシステム");
             foreach (BenchResult r in results)
             {
                 string top = string.Join(" ", r.SystemMsPerDay.OrderByDescending(kv => kv.Value).Take(3).Select(kv => $"{kv.Key}={kv.Value:0.0}"));
-                sb.AppendLine($"{r.Preset,-4}{r.Population,6}{r.Companies,6}{r.Buildings,6}{r.RoadCells,6}{r.MsPerDay,10:0.0}{r.MemoryMB,11:0.0}{r.SaveKB,10:0}{r.SaveMs,8:0}/{r.LoadMs,-6:0}{r.Unemployment,8:P0}  {(r.ResumeMatches ? "はい" : "いいえ"),-6}  {top}");
+                sb.AppendLine($"{r.Preset,-4}{r.Population,6}{r.Companies,6}{r.Buildings,6}{r.RoadCells,6}{r.MsPerDay,10:0.0}{r.MemoryMB,11:0.0}{r.SaveKB,10:0}{r.SaveMs,8:0}/{r.LoadMs,-6:0}{r.Unemployment,8:P0}  {(r.ResumeMatches ? "はい" : "いいえ"),-6}  {r.TreesPerDay,8:0}  {top}");
             }
             return sb.ToString();
         }

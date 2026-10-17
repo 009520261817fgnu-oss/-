@@ -89,6 +89,8 @@ namespace WorldSim.Core.Economy
         /// <summary>Exponential moving average of daily profit (~10 days).</summary>
         public double ProfitAvg;
         public long LastProfit;
+        /// <summary>Yesterday's total costs (wages, inputs, freight, energy...), for unit-cost pricing (S3).</summary>
+        public long LastCost;
 
         // Operating measures from the last day.
         public double LastOutput;

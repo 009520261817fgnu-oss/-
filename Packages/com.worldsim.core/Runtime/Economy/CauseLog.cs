@@ -52,6 +52,7 @@ namespace WorldSim.Core.Economy
         Evicted = 32,
         MovedForCheaperRent = 33,
         DiedOfIllness = 34,
+        PriceCostPush = 35,
     }
 
     /// <summary>What a daily total measures. Saved: append only.</summary>

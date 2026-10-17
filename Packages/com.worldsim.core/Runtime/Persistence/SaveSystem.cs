@@ -204,7 +204,7 @@ namespace WorldSim.Core.Persistence
                     ["vacancyDays"] = co.VacancyDays, ["broken"] = co.BrokenDays,
                     ["techs"] = new List<object>(co.AdoptedTechs),
                     ["rev"] = (double)co.RevenueToday, ["cost"] = (double)co.CostToday,
-                    ["profitAvg"] = co.ProfitAvg, ["lastProfit"] = (double)co.LastProfit,
+                    ["profitAvg"] = co.ProfitAvg, ["lastProfit"] = (double)co.LastProfit, ["lastCost"] = (double)co.LastCost,
                     ["lastOutput"] = co.LastOutput, ["outputCap"] = co.OutputCapacity,
                     ["shortage"] = co.InputShortage, ["energy"] = co.EnergyUse, ["targetCause"] = (int)co.TargetCause, ["backlog"] = (double)co.Backlog,
                 });
@@ -304,6 +304,7 @@ namespace WorldSim.Core.Persistence
                 };
                 if (d.ContainsKey("targetCause")) co.TargetCause = (Cause)d.GetInt("targetCause");
                 if (d.ContainsKey("backlog")) co.Backlog = (long)d.GetDouble("backlog");
+                if (d.ContainsKey("lastCost")) co.LastCost = (long)d.GetDouble("lastCost");
                 foreach (object x in (IList<object>)d["workers"]) co.Workers.Add(I(x));
                 ReadDict(Obj(d, "inv"), co.Inventory);
                 ReadDict(Obj(d, "salesAvg"), co.SalesAvg);

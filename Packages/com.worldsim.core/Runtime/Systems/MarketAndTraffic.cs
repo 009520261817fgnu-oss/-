@@ -36,6 +36,7 @@ namespace WorldSim.Core.Systems
                 Cause why = Cause.Unspecified;
                 if (shortage > 0.05 * scale) { p *= 1 + Step; why = Get(m.Unmet, r.Id) >= Get(m.Imported, r.Id) ? Cause.PriceShortage : Cause.PriceImports; }
                 else if (surplus > 0.05 * scale) { p *= 1 - Step; why = Cause.PriceSurplus; }
+                else if (UnitCost(w, r.Id) > old * CostPushMargin) { p *= 1 + Step; why = Cause.PriceCostPush; }
                 double bounded = Math.Max(r.BasePrice * MinFactor, Math.Min(r.BasePrice * MaxFactor, p));
                 m.Price[r.Id] = bounded;
                 // Book the actual move in log units so daily moves add up exactly over any period. A price
@@ -46,6 +47,28 @@ namespace WorldSim.Core.Systems
         }
 
         private static double Get(SortedDictionary<string, double> d, string k) => d.TryGetValue(k, out double v) ? v : 0;
+
+        /// <summary>Producers pass on costs: the price creeps up while it is below their unit cost by this factor.</summary>
+        public const double CostPushMargin = 1.05;
+
+        /// <summary>
+        /// Output-weighted unit cost of yesterday's loss-making local producers of a resource (0 when
+        /// none are losing money). Cost push only applies when there is neither shortage nor surplus:
+        /// a surplus must be exported at the world price, and imports cap what buyers will pay.
+        /// </summary>
+        public static double UnitCost(WorldState w, string res)
+        {
+            double cost = 0, units = 0;
+            foreach (Company co in w.Economy.Companies.Values)
+            {
+                if (co.Closed || co.Recipe == null || co.LastProfit >= 0 || !co.Recipe.Outputs.TryGetValue(res, out double perBatch)) continue;
+                double made = co.LastOutput * perBatch;
+                if (made <= 0) continue;
+                cost += co.LastCost;
+                units += made;
+            }
+            return units <= 0 ? 0 : cost / units;
+        }
     }
 
     /// <summary>

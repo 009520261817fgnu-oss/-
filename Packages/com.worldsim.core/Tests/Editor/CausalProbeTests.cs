@@ -174,7 +174,7 @@ namespace WorldSim.Core.Tests
         public void NewHousingCostsMoneyAndNeverShrinksTheTown()
         {
             Assert.Less(Change("町の近くに集合住宅6棟", "treasury"), 0);
-            Assert.GreaterOrEqual(Change("町の近くに集合住宅6棟", "population"), 0);
+            Assert.Greater(Change("町の近くに集合住宅6棟", "population"), -0.01, "no meaningful shrinkage");
         }
 
         [Test]

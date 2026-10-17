@@ -89,6 +89,7 @@ namespace WorldSim.Core.Systems
                     l.TransferUpTo(co, e.City, tax, Flow.CorporateTax);
                 }
                 co.LastProfit = profit;
+                co.LastCost = co.CostToday;
                 co.ProfitAvg = co.ProfitAvg * 0.9 + profit * 0.1;
                 co.RevenueToday = 0;
                 co.CostToday = 0;

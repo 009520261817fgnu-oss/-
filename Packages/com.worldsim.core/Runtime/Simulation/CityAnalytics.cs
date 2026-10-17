@@ -115,7 +115,11 @@ namespace WorldSim.Core.Simulation
         public static double Forecast(List<StatsSnapshot> history, string series, int daysAhead, int window = 60)
         {
             if (history.Count == 0) return 0;
-            return history[history.Count - 1].Get(series) + Trend(history, series, window) * daysAhead;
+            double v = history[history.Count - 1].Get(series) + Trend(history, series, window) * daysAhead;
+            // Shares and counts cannot leave their natural range, however steep the recent trend.
+            if (series == "unemployment" || series == "happiness") return Math.Max(0, Math.Min(100, v));
+            if (series == "population") return Math.Max(0, v);
+            return v;
         }
 
         /// <summary>

@@ -15,13 +15,13 @@ namespace WorldSim.Presentation
     {
         private const float BaseHeight = 900f;
 
-        // Shown so the prototype never implies these exist yet (spec 1.2 principle 8).
+        // Shown so the prototype never implies these exist in the Unity client yet (spec 1.2 principle 8).
+        // The simulation runs them; their panels currently exist only in the web client.
         private static readonly string[] NotImplemented =
         {
-            "住民・企業・生産・雇用（フェーズ2）",
-            "交通量・物流・経済・税収（フェーズ3）",
-            "技術・政策・環境・災害（フェーズ4）",
-            "セーブ／ロード・歴史分岐・グラフ（フェーズ5）",
+            "政策・研究・分岐・保存・グラフの画面（Web版にあり）",
+            "交通量・汚染・地価のオーバーレイ（Web版にあり）",
+            "建物内部・モジュール式建築・鉄道・港",
         };
 
         private WorldSimGame _game;
@@ -161,6 +161,8 @@ namespace WorldSim.Presentation
 
             GUILayout.BeginVertical(GUILayout.Width(260));
             StatsSnapshot s = StatsHistorySystem.Capture(world);
+            GUILayout.Label($"市の資金 {world.Economy.City.Cash / 10000:N0}万円  人口 {s.Population}");
+            GUILayout.Label($"失業率 {s.UnemploymentRate:P1}  電力 {world.Environment.EnergyRatio:P0}");
             GUILayout.Label($"建物 {s.Buildings}  道路 {s.RoadCells} マス");
             foreach (var kv in s.ByCategory) GUILayout.Label($"  {kv.Key}: {kv.Value}");
             GUILayout.EndVertical();

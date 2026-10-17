@@ -40,6 +40,9 @@ namespace WorldSim.Core.Simulation
         /// <summary>Ticks discarded because the host could not keep up (shown as a warning).</summary>
         public long DroppedTicks { get; private set; }
 
+        /// <summary>Fraction (0..1) of the way to the next tick, for smooth animation between ticks.</summary>
+        public double TickProgress => Math.Max(0, Math.Min(1, _accumulator));
+
         /// <summary>When true, wall-clock milliseconds per system are accumulated in <see cref="ProfileMs"/>.</summary>
         public bool Profile { get; set; }
         public Dictionary<string, double> ProfileMs { get; } = new Dictionary<string, double>();

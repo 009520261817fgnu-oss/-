@@ -23,7 +23,7 @@ namespace WorldSim.Core.Transport
         /// <summary>Travel time from the map edge to the nearest outside market.</summary>
         public const float OutsideHours = 1.0f;
         /// <summary>Vehicles per day a road cell carries before congestion grows quickly.</summary>
-        public const float CellCapacityPerDay = 3000f;
+        public const float CellCapacityPerDay = 1000f;
 
         private readonly WorldState _w;
         private bool _dirty = true;

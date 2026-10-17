@@ -1,0 +1,245 @@
+<title>WorldSim 試作版</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: full-bleed 3D map; a survey-desk HUD floats over it — status strip on top, tool rail on the left,
+   a tabbed field notebook on the right (a bottom sheet on phones). One deliberate dark palette. */
+:root {
+  --ground: #0b141b;
+  --panel: rgba(15, 26, 34, 0.88);
+  --panel-solid: #13212b;
+  --raised: #1b2c38;
+  --line: rgba(236, 230, 218, 0.13);
+  --text: #ece6da;
+  --muted: #9fadb5;
+  --accent: #e8893a;
+  --accent-ink: #1d1208;
+  --good: #63bba3;
+  --warn: #e3b341;
+  --bad: #e2625a;
+  --info: #7fa7c9;
+  --ui: "Zen Kaku Gothic New", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+  --num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--ground); color: var(--text); font-family: var(--ui); font-size: 14px; overflow: hidden; -webkit-user-select: none; user-select: none; touch-action: none; }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--num); font-variant-numeric: tabular-nums; }
+
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+/* Loading */
+#boot { position: fixed; inset: 0; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, #16303d, var(--ground) 70%); z-index: 50;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+#boot .card { max-width: 30rem; display: grid; gap: 14px; text-align: left; }
+#boot h1 { font-size: 2rem; letter-spacing: 0.04em; font-weight: 700; margin: 0; text-wrap: balance; }
+#boot h1 small { display: block; font-size: 0.9rem; color: var(--muted); font-weight: 500; letter-spacing: 0.12em; margin-top: 4px; }
+#boot p { margin: 0; color: var(--muted); line-height: 1.7; }
+.bar { height: 6px; border-radius: 3px; background: var(--raised); overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+#bootError { color: var(--bad); white-space: pre-wrap; }
+
+/* Status strip */
+#hud { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) max(12px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
+  background: linear-gradient(to bottom, rgba(11,20,27,.92), rgba(11,20,27,.55) 75%, transparent); pointer-events: none; }
+#hud > * { pointer-events: auto; }
+.stat { display: grid; line-height: 1.15; min-width: 0; }
+.stat b { font-family: var(--num); font-weight: 500; font-size: 15px; font-variant-numeric: tabular-nums; }
+.stat span { font-size: 10.5px; color: var(--muted); letter-spacing: 0.08em; }
+.stat.date b { font-family: var(--ui); font-weight: 700; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 9px; height: 30px; border-radius: 15px; border: 1px solid var(--line); background: var(--panel); white-space: nowrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.seg button { border: 0; background: transparent; padding: 0 10px; height: 32px; min-width: 40px; font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+.spacer { flex: 1; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--good); }
+.dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+
+/* Tool rail */
+#tools { position: fixed; left: max(10px, env(safe-area-inset-left, 0px)); top: 50%; transform: translateY(-50%); z-index: 10; display: grid; gap: 6px;
+  padding: 8px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.tool { width: 58px; height: 50px; border-radius: 10px; border: 1px solid transparent; background: transparent; display: grid; place-items: center; gap: 0; font-size: 11.5px; line-height: 1.1; padding: 4px 2px; }
+.tool svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tool:hover { background: var(--raised); }
+.tool[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+
+/* Build drawer */
+#drawer { position: fixed; z-index: 11; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 86px); top: 50%; transform: translateY(-50%); width: min(330px, calc(100vw - 120px));
+  max-height: min(78vh, 640px); overflow: auto; padding: 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+#drawer h3 { margin: 10px 2px 6px; font-size: 11px; letter-spacing: .14em; color: var(--muted); font-weight: 500; }
+#drawer h3:first-child { margin-top: 0; }
+.bitem { width: 100%; display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; text-align: left; padding: 8px; border-radius: 8px; border: 1px solid transparent; background: transparent; }
+.bitem:hover { background: var(--raised); }
+.bitem[aria-pressed="true"] { border-color: var(--accent); background: var(--raised); }
+.bitem[disabled] { opacity: .45; cursor: not-allowed; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; }
+.bitem small { display: block; color: var(--muted); font-size: 11px; }
+.cost { font-family: var(--num); font-size: 12px; color: var(--muted); }
+
+/* Notebook panel */
+#panel { position: fixed; z-index: 10; right: max(10px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 64px); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  width: min(380px, 42vw); display: flex; flex-direction: column; border-radius: 14px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); overflow: hidden; }
+#panel.collapsed { bottom: auto; }
+#panel.collapsed .body { display: none; }
+.tabs { display: flex; gap: 2px; padding: 6px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: none; flex-shrink: 0; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs button { flex-shrink: 0; border: 0; background: transparent; padding: 7px 10px; border-radius: 8px; font-size: 13px; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--raised); color: var(--text); font-weight: 700; }
+.tabs .collapse { margin-left: auto; color: var(--text); }
+.body { flex: 1; overflow: auto; padding: 12px 14px 16px; min-height: 0; -webkit-user-select: text; user-select: text; touch-action: pan-y; }
+.body h2 { font-size: 15px; margin: 2px 0 10px; text-wrap: balance; }
+.body h4 { font-size: 11px; letter-spacing: .14em; color: var(--muted); font-weight: 500; margin: 16px 0 6px; }
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: var(--num); font-variant-numeric: tabular-nums; text-align: right; }
+.empty { color: var(--muted); line-height: 1.7; }
+.finding { display: grid; grid-template-columns: 4px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.finding i { border-radius: 2px; background: var(--info); }
+.finding.Warning i { background: var(--warn); } .finding.Critical i { background: var(--bad); }
+.finding b { display: block; font-size: 13.5px; } .finding p { margin: 3px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--raised); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 700; }
+.btn.danger { border-color: rgba(226,98,90,.6); color: #f3b0ab; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.policy { display: grid; gap: 4px; margin-bottom: 14px; }
+.policy label { display: flex; justify-content: space-between; font-size: 13px; }
+.policy output { font-family: var(--num); }
+.policy small { color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.tech { padding: 10px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; display: grid; gap: 4px; }
+.tech.done { border-color: rgba(99,187,163,.5); }
+.tech.current { border-color: var(--accent); }
+.tech header { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.tech small { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; background: var(--raised); color: var(--muted); white-space: nowrap; }
+.pill.good { color: var(--good); } .pill.accent { color: var(--accent); } .pill.bad { color: var(--bad); }
+canvas.chart { width: 100%; height: 170px; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.legend i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+.series-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.series-pick button { border: 1px solid var(--line); background: transparent; border-radius: 14px; padding: 4px 10px; font-size: 12px; }
+.series-pick button[aria-pressed="true"] { background: var(--raised); border-color: var(--accent); }
+textarea { width: 100%; min-height: 90px; background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-family: var(--num); font-size: 11px; resize: vertical; }
+select { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.news { font-size: 12.5px; line-height: 1.55; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.news .k { color: var(--accent); margin-right: 6px; }
+.news .t { color: var(--muted); font-family: var(--num); margin-right: 6px; }
+ul.plain { margin: 0; padding-left: 1.1em; line-height: 1.75; color: var(--muted); font-size: 13px; }
+ul.plain b { color: var(--text); font-weight: 500; }
+
+/* Overlay chips, toast, confirm, joystick */
+#overlays { position: fixed; z-index: 10; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+#toast { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 74px); max-width: min(90vw, 520px);
+  padding: 9px 14px; border-radius: 10px; background: var(--panel-solid); border: 1px solid var(--line); font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; }
+#toast.show { opacity: 1; } #toast.bad { border-color: var(--bad); }
+#confirm { position: fixed; z-index: 15; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 66px); display: flex; gap: 8px; padding: 8px; border-radius: 12px; background: var(--panel-solid); border: 1px solid var(--line); align-items: center; }
+#confirm span { font-size: 13px; padding: 0 6px; max-width: 46vw; }
+#stick { position: fixed; z-index: 12; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 90px); bottom: calc(env(safe-area-inset-bottom, 0px) + 24px); width: 120px; height: 120px; border-radius: 50%;
+  background: rgba(15,26,34,.55); border: 1px solid var(--line); touch-action: none; }
+#stick i { position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%; background: rgba(232,137,58,.75); }
+#updown { position: fixed; z-index: 12; left: calc(max(10px, env(safe-area-inset-left, 0px)) + 222px); bottom: calc(env(safe-area-inset-bottom, 0px) + 30px); display: grid; gap: 8px; }
+#updown button { width: 48px; height: 48px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); font-size: 18px; }
+
+@media (max-width: 760px) {
+  #hud { gap: 4px 10px; }
+  .stat b { font-size: 13px; }
+  .hide-sm { display: none !important; }
+  #tools { top: auto; transform: none; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); left: max(8px, env(safe-area-inset-left, 0px)); right: max(8px, env(safe-area-inset-right, 0px));
+    display: flex; overflow-x: auto; padding: 6px; }
+  .tool { flex-shrink: 0; width: 54px; }
+  #drawer { left: max(8px, env(safe-area-inset-left, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); width: auto; top: auto; transform: none; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); max-height: 46vh; }
+  #panel { left: max(8px, env(safe-area-inset-left, 0px)); right: max(8px, env(safe-area-inset-right, 0px)); width: auto; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 84px); max-height: 52vh; }
+  #overlays { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 92px); }
+  #confirm { bottom: calc(env(safe-area-inset-bottom, 0px) + 90px); }
+  #stick { bottom: calc(env(safe-area-inset-bottom, 0px) + 92px); left: max(16px, env(safe-area-inset-left, 0px)); }
+  #updown { bottom: calc(env(safe-area-inset-bottom, 0px) + 98px); left: auto; right: max(16px, env(safe-area-inset-right, 0px)); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<canvas id="view" aria-label="3Dの世界"></canvas>
+
+<div id="boot" role="status">
+  <div class="card">
+    <h1>WorldSim<small>3D世界シミュレーション 試作版</small></h1>
+    <p id="bootMsg">シミュレーションエンジン（C#／WebAssembly）を読み込んでいます…</p>
+    <div class="bar"><i id="bootBar"></i></div>
+    <p id="bootError" hidden></p>
+  </div>
+</div>
+
+<header id="hud" hidden>
+  <div class="stat date"><b id="hDate">—</b><span id="hBranch">本線</span></div>
+  <div class="stat"><b id="hCash">—</b><span>市の資金</span></div>
+  <div class="stat"><b id="hPop">—</b><span>人口</span></div>
+  <div class="stat"><b id="hUnemp">—</b><span>失業率</span></div>
+  <div class="stat hide-sm"><b id="hHappy">—</b><span>満足度</span></div>
+  <div class="stat hide-sm"><b id="hEnergy">—</b><span>電力</span></div>
+  <div class="stat hide-sm"><b id="hWeather">—</b><span>天気</span></div>
+  <div class="spacer"></div>
+  <div class="seg" role="group" aria-label="時間の速さ">
+    <button data-speed="0">停止</button>
+    <button data-speed="1">1×</button>
+    <button data-speed="2">4×</button>
+    <button data-speed="3">16×</button>
+  </div>
+  <div class="seg" role="group" aria-label="カメラ">
+    <button data-cam="overhead">俯瞰</button>
+    <button data-cam="free">自由</button>
+    <button data-cam="walk">一人称</button>
+  </div>
+</header>
+
+<nav id="tools" hidden aria-label="ツール">
+  <button class="tool" data-tool="inspect" aria-pressed="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>調査</button>
+  <button class="tool" data-tool="build"><svg viewBox="0 0 24 24"><path d="M4 20V9l8-5 8 5v11z"/><path d="M10 20v-6h4v6"/></svg>建設</button>
+  <button class="tool" data-tool="road"><svg viewBox="0 0 24 24"><path d="M8 3L5 21M16 3l3 18M12 4v3M12 11v3M12 18v2"/></svg>道路</button>
+  <button class="tool" data-tool="bulldoze"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>撤去</button>
+  <button class="tool" data-tool="raise"><svg viewBox="0 0 24 24"><path d="M3 19l6-8 4 5 3-4 5 7z"/><path d="M12 3v5M9.5 5.5L12 3l2.5 2.5"/></svg>隆起</button>
+  <button class="tool" data-tool="lower"><svg viewBox="0 0 24 24"><path d="M3 9c4 6 14 6 18 0"/><path d="M12 13v7M9.5 17.5L12 20l2.5-2.5"/></svg>掘削</button>
+  <button class="tool" data-tool="flatten"><svg viewBox="0 0 24 24"><path d="M3 15h18M6 15l3-5h6l3 5"/></svg>平坦化</button>
+</nav>
+<section id="drawer" hidden aria-label="建物の一覧"></section>
+
+<aside id="panel" hidden>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="info" aria-selected="true">情報</button>
+    <button role="tab" data-tab="analysis">分析</button>
+    <button role="tab" data-tab="charts">グラフ</button>
+    <button role="tab" data-tab="policy">政策</button>
+    <button role="tab" data-tab="research">研究</button>
+    <button role="tab" data-tab="branches">歴史分岐</button>
+    <button role="tab" data-tab="save">保存</button>
+    <button role="tab" data-tab="disaster">災害</button>
+    <button role="tab" data-tab="news">ニュース</button>
+    <button role="tab" data-tab="about">概要</button>
+    <button class="collapse" id="collapse" aria-label="パネルを折りたたむ">▾</button>
+  </div>
+  <div class="body" id="panelBody"></div>
+</aside>
+
+<div id="overlays" hidden>
+  <div class="seg" role="group" aria-label="地図の表示">
+    <button data-overlay="none" aria-pressed="true">通常</button>
+    <button data-overlay="traffic">交通量</button>
+    <button data-overlay="pollution">大気汚染</button>
+    <button data-overlay="landValue">地価</button>
+  </div>
+</div>
+
+<div id="confirm" hidden><span id="confirmText"></span><button class="btn primary" id="confirmOk">実行</button><button class="btn" id="confirmCancel">取消</button></div>
+<div id="stick" hidden><i></i></div>
+<div id="updown" hidden><button id="btnUp" aria-label="上昇">▲</button><button id="btnDown" aria-label="下降">▼</button></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="_framework/blazor.webassembly.js" autostart="false"></script>
+<script src="app.js"></script>

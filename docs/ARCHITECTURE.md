@@ -1,94 +1,71 @@
-# アーキテクチャ設計（フェーズ0〜1時点）
+# アーキテクチャ（フェーズ6完了時点）
 
 ## 1. 全体構成
 
 ```
 WorldSim/
-├─ Packages/com.worldsim.core/        Unity非依存の純C#パッケージ（UPM形式）
-│   ├─ Runtime/                       asmdef: noEngineReferences = true（UnityEngine参照を禁止）
-│   │   ├─ Common/      GridPos, DeterministicRandom, StateHasher, Json
-│   │   ├─ Content/     定義データ（BuildingDef, ResourceDef）と ContentDatabase
-│   │   ├─ World/       Terrain, TerrainGenerator, WorldState, Building, WorldChange
-│   │   ├─ Commands/    プレイヤー操作 = IWorldCommand
-│   │   ├─ Simulation/  SimClock, SimulationRunner, ISimulationSystem, StatsHistorySystem
-│   │   └─ Bootstrap/   WorldFactory（初期世界の生成）
-│   ├─ Content/Resources/WorldSimContent/*.json   外部化された定義データ
-│   └─ Tests/Editor/                  NUnitテスト（Unity Test Runner と dotnet test の両方で実行）
-├─ UnityProject/Assets/WorldSim/Scripts/   Presentation + UI（Unity依存、ここでは未検証）
-├─ dotnet/                            .NET SDK 用ビルド（Core / Tests / Cli）
-└─ docs/                              仕様書・設計・タスク
+├─ Packages/com.worldsim.core/          Unity非依存の純C#（asmdef: noEngineReferences）
+│   ├─ Runtime/
+│   │   ├─ Common/       GridPos, DeterministicRandom, StateHasher, Json
+│   │   ├─ Content/      建物・資源・レシピ・技術の定義と検証（JSONから読込）
+│   │   ├─ World/        地形・建物・道路・植生・被災状態、編集と検証（WorldState）
+│   │   ├─ Economy/      住民・企業・市・市場・台帳（整数円）・技術効果
+│   │   ├─ Transport/    道路グラフ、所要時間・経路（Dijkstra）、交通トリップ
+│   │   ├─ Environment/  天候・汚染・電力・洪水の状態
+│   │   ├─ Systems/      日次の各システム（下記）
+│   │   ├─ Commands/     プレイヤー操作（建設・道路・撤去・地形・政策・研究・災害）
+│   │   ├─ Simulation/   時計、実行器、統計、都市分析、整合性検証
+│   │   ├─ Persistence/  セーブ／ロード、歴史分岐
+│   │   └─ Bootstrap/    初期世界の生成
+│   ├─ Content/Resources/WorldSimContent/*.json   定義データ（外部化）
+│   └─ Tests/Editor/                    NUnit 89件（Unity Test Runner と dotnet test の両方）
+├─ dotnet/
+│   ├─ WorldSim.Core / .Tests           .NET上でのビルド・テスト
+│   ├─ WorldSim.Cli                     ヘッドレス実行・地図PNG・性能測定
+│   └─ WorldSim.Web                     ブラウザ版（Blazor WASMでCoreを実行、Three.jsで描画）
+├─ UnityProject/Assets/WorldSim/        Unity版の表示・入力・UI（未検証）
+└─ docs/
 ```
 
-仕様5.2の層との対応:
+依存は一方向（Web/Unity/CLI → Core）。Coreは描画・入力を知らない。
 
-| 層 | 実装場所 | 状態 |
+## 2. 1日の処理（1 tick = 1時間、日次システムは1時間ずつずらして実行）
+
+| 時刻 | システム | 主な内容 |
 |---|---|---|
-| World | `Runtime/World` | 実装済み（地形・建物・道路・植生） |
-| Simulation | `Runtime/Simulation` | 時間管理と統計のみ。住民・企業等はフェーズ2以降 |
-| Presentation | `UnityProject/.../TerrainView, StructureView, CameraRig` | コードのみ・Unity未検証 |
-| UI | `UnityProject/.../WorldSimHud, ToolController` | コードのみ・Unity未検証 |
-| Persistence | — | フェーズ5（ハッシュ関数 `ComputeHash` のみ先行） |
-| Content | `Runtime/Content` + JSON | 建物・資源の定義を外部化済み |
-| Testing | `Tests/Editor` + `dotnet/` | 42件 |
+| 1:00 | Weather | 季節の気温、降雨、土壌水分、温暖化 |
+| 2:00 | Disaster | 大雨→洪水、まれに地震。耐性（防災投資・耐震技術）で被害軽減 |
+| 3:00 | Labor | 退職、雇用目標、解雇、求職・転職（賃金−通勤コスト）、賃金調整 |
+| 4:00 | Energy | 電力需給、料金、燃料費、発電所の故障 |
+| 5:00 | Research | 研究ポイント、技術の完了、企業の技術導入 |
+| 6:00 | Production | 労働×効率（電力・損傷・故障・技術・学歴・天候・森林）、原料制約、在庫上限 |
+| 7:00 | Logistics | 企業間取引（地元：価格＋運賃、輸入：割高＋長距離）、輸出、運賃の支払い |
+| 8:00 | Retail | 住民の購買（所得に応じて食品→サービス→工業製品） |
+| 9:00 | Finance | 賃金・所得税、年金・失業手当、補助金、法人税、配当、維持費、防災投資、倒産・再開 |
+| 10:00 | Population | 学校、住居、出生・死亡、移住、転居、満足度 |
+| 11:00 | Market | 不足なら値上がり、余剰なら値下がり |
+| 12:00 | Traffic | 通勤・買い物・貨物を経路に割当て、渋滞を所要時間へ反映（3日ごと） |
+| 13:00 | Pollution | 排出・拡散・減衰、森林の吸収・被害・再生 |
+| 14:00 | Repair | 予算と復旧班（消防・復旧センター）で道路→建物の順に修理 |
+| 15:00 | Stats | 日次の統計を記録し、日次の集計を繰り越す |
 
-**依存の方向は一方向**: Presentation/UI → Core。Core は描画・入力を一切知らない。
+## 3. 連携の要点
 
-## 2. 世界データ
+- **お金**：すべて `Ledger.Transfer` を通す整数円。外部（他地域）も口座として扱い、総額は常に0（毎日検証）。
+- **交通→経済**：道路の変更で所要時間が変わり、通勤先の選択・運賃・輸出入・住民の転居が変わる。
+- **技術→社会**：研究完了→企業が資金があれば導入→生産性・必要人員・電力・汚染が変化。
+- **災害→復興**：建物の状態（0〜1）が生産量・居住に直結し、道路の被災は通行止めになる。
+- **決定性**：乱数は保存可能なxorshift、反復は整列済みコレクション、渋滞の基準値も保存対象。
+  同じ状態からは速度やフレームレートに関係なく同じ結果になり、ロード後も元と同じ未来をたどる（テスト済み）。
+  ただし浮動小数点のため、異なるCPU間のビット一致は保証しない。
 
-- **グリッド**: 1マス = 10m。初期世界は 128×128 マス（1.28km 四方）。X=東、Z=北。
-- **地形**: マスの角（頂点）に高さを持つハイトフィールド `(W+1)×(D+1)`。
-  南端が海、北が山、中央に都市用の平野。ノイズは自前実装（シード決定的）。
-- **占有**: マスごとに建物ID（0=なし）と道路フラグ。建物と道路は重ならない。
-- **植生**: マスごとの森林密度（0〜255）。建設・道路・水没で消える。フェーズ4で成長・伐採モデルへ拡張。
-- **ID**: `WorldState.NextId` から単調増加。削除しても再利用しない（セーブ・参照の安定性）。
-- **建物の高さ**: 足元の最高頂点を床面とし、基礎を最低頂点まで伸ばす。地形自体は変更しない。
+## 4. 保存と歴史分岐
 
-## 3. 変更の流れ（コマンドとイベント）
+- `SaveSystem`：世界・経済・環境・時計・乱数・日中の途中集計・履歴（列形式）を含むJSON。地形などはbase64。
+- `BranchManager`：保存→読込による完全な複製で分岐。分岐ごとに独立した時計。全分岐をまとめて保存可能。
 
-```
-入力(マウス/タッチ) → ToolController → IWorldCommand → WorldState.Try*() → 検証 → 変更
-                                                                         ↓
-                                         WorldState.Changed(WorldChange{種類, 範囲})
-                                                                         ↓
-                                 TerrainView / StructureView が dirty → LateUpdate で1回だけ再構築
-```
+## 5. 性能（.NET 8 Release／ブラウザWASM）
 
-- すべての編集はコマンド経由。検証ロジックは `WorldState` の1か所に集約。
-  プレビュー（緑/赤のゴースト）も同じ `CanPlaceBuilding` を使うため、表示と実際の判定が一致する。
-- コマンドは単純なデータなので、将来は記録・リプレイ・サーバー側検証（仕様5.5）に流用できる。
-- 道路建設は原子的（途中に不可能なマスがあれば何も作らない）。
-- 地形編集は、建物・道路が載っている頂点を保護する（浮いたり埋まったりしない）。
-
-## 4. 時間管理
-
-- 1 tick = ゲーム内1時間。1日 = 24 tick、1年 = 360日（簡易暦）。
-- `SimulationRunner.Update(実時間秒)` が累積器から整数tickを実行。描画フレームとは独立（仕様5.2）。
-- 速度: 停止 / 通常(2 tick/秒) / 高速(8) / 超高速(32)。
-- **加速しても1 tickの処理は同一**なので、速度やフレームレートで結果が変わらない（テストで検証済み）。
-- 1フレームの最大tick数を48に制限し、超過分は破棄して `DroppedTicks` として警告表示（停止しない）。
-- システムは `IntervalTicks` ごとに登録順で実行（例: 統計は1日1回）。仕様5.3「更新頻度を現象ごとに分ける」に対応。
-
-## 5. 決定性
-
-- 乱数は `DeterministicRandom`（状態を保存可能）。`System.Random` は使わない。
-- 反復順序が決まるコレクションのみ使用（建物は `SortedDictionary`）。
-- `WorldState.ComputeHash()` で全状態の指紋を取り、同シード同結果をテストで保証。
-- 制約: 浮動小数点を使うため、**異なるCPU/プラットフォーム間のビット一致は保証しない**。
-  マルチプレイでロックステップ同期が必要になった場合は固定小数点化を検討する（現時点では不要）。
-
-## 6. カメラと入力（Unity側）
-
-| モード | PC | タッチ |
-|---|---|---|
-| 俯瞰 | WASD/矢印=移動、ホイール=ズーム、Q/E・右ドラッグ=回転、中ドラッグ=移動 | 2本指=移動/ピンチ/回転、1本指=移動（調査ツール時のみ） |
-| 自由 | WASD、Space/Ctrl=上下、右ドラッグ=視点、Shift=高速 | 未対応（フェーズ6） |
-| 一人称 | WASDで地表を歩行、右ドラッグ=視点 | 未対応（フェーズ6） |
-
-- 入力は Unity Input System（新方式）。タッチは EnhancedTouch。1本指=ツール操作、2本指=カメラ。
-- UIはIMGUIで仮実装（プレハブ不要、画面高に応じて拡大）。本格UIはUI Toolkitで作り直す予定。
-
-## 7. 性能（測定値、.NET 8 / クラウドコンテナ）
-
-- 128×128 世界の生成（地形・植生・町）: 約33ms
-- 30日分（720 tick）のシミュレーション: 約2ms（現在は統計システムのみなので参考値）
-- Unity側の描画性能は未測定。
+- 128×128マス・人口約1,200：1日あたり約7ms（ネイティブ）。ブラウザでも1 tickあたり約3〜4ms。
+- 10年分の連続実行（検証付き）：約28秒（テスト環境、Debug）。
+- 重い処理：Retail・Traffic・Logistics。将来は空間分割・集約計算・Job System化を検討（仕様5.3）。

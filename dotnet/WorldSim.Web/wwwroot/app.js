@@ -61,10 +61,11 @@ async function boot() {
   let loaded = 0;
   try {
     await Blazor.start({
+      // The host reserves names starting with "_", so the runtime is published under framework/.
       loadBootResource(type, name, url) {
         loaded++;
         bar.style.width = Math.min(95, loaded * 2.6) + '%';
-        return url;
+        return url.replace('_framework/', 'framework/');
       },
     });
   } catch (e) {

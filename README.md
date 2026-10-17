@@ -11,7 +11,7 @@
 
 ```bash
 cd dotnet
-dotnet publish WorldSim.Web -c Release -o ../out/web   # out/web/wwwroot を任意の静的サーバーで配信
+./publish-web.sh   # out/web/wwwroot を任意の静的サーバーで配信（ランタイムは framework/ に配置）
 ```
 
 - 移動：ドラッグ（調査ツール）／WASD、回転：右ドラッグ／2本指ひねり／Q・E、拡大：ホイール／ピンチ

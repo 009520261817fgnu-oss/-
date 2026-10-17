@@ -281,6 +281,7 @@ const Life = {
       case 'travel': return this.run({ type: 'travel', id });
       case 'buy': return this.run({ type: 'buy', res: arg, qty: 1 });
       case 'talk': return this.run({ type: 'talk', id });
+      case 'propose': return this.run({ type: 'propose', id });
       case 'apply': return this.run({ type: 'apply', id });
       case 'move': return this.run({ type: 'move', id });
       case 'quit': return showBar('<b>今の仕事を辞めますか？</b>', '辞める', true, () => { hideBar(); this.run({ type: 'quit' }); }, false);
@@ -375,7 +376,9 @@ const Life = {
         ['食料（自宅）', `${s.pantry}食分`], ['満足度', pct(s.happiness)],
       ])}
       <p class="empty" style="margin-top:8px">世界の時間は止まらず、他の住民もそれぞれの予定で暮らしています。給料は実際に働いた時間で支払われ、食事は店で買った食料からとります。</p>
-      <h4>同じ住まいの人・知り合い</h4>${this.peopleList([...(s.family || []), ...(s.friends || []).filter((f) => !(s.family || []).some((x) => x.id === f.id))])}
+      <h4>家族</h4>${s.partner ? `<div class="news"><b>${esc(s.partner.name)}</b> ${s.partner.age}歳・${esc(s.partner.job)}<span class="pill good">パートナー</span></div>` : '<p class="empty">パートナーはいません。親しくなった（親しさ50%以上）独身の人にプロポーズできます。</p>'}
+      ${(s.children || []).map((k) => `<div class="news"><b>${esc(k.name)}</b> ${k.age}歳・${esc(k.job)}<span class="pill">子ども</span></div>`).join('')}
+      <h4>同じ住まいの人・知り合い</h4>${this.peopleList([...(s.family || []), ...(s.friends || []).filter((f) => !(s.family || []).some((x) => x.id === f.id))].filter((p) => !p.partner))}
       <h4>仕事を探す</h4>${this.show.jobs ? this.jobsList() : '<button class="btn" id="lfJobs">求人を見る</button>'}
       ${s.job ? '<div class="row" style="margin-top:8px"><button class="btn danger" data-life="quit">仕事を辞める</button></div>' : ''}
       <h4>住まいを探す</h4>${this.show.homes ? this.homesList() : '<button class="btn" id="lfHomes">空き住宅を見る</button>'}
@@ -389,7 +392,7 @@ const Life = {
     if (!list.length) return '<p class="empty">まだいません。同じ建物にいる人と話すと知り合いになります。</p>';
     return list.map((p) => `<div class="news"><b>${esc(p.name)}</b> ${p.age}歳・${esc(p.job)}・${esc(SCHEDULE[p.activity] || '')}
       <span class="pill">${p.affinity > 0 ? '親しさ ' + Math.round(p.affinity * 100) : '同じ住まい'}</span>
-      <button class="btn" data-life="talk" data-id="${p.id}" style="padding:3px 8px;margin-left:4px">話す</button></div>`).join('');
+      <button class="btn" data-life="talk" data-id="${p.id}" style="padding:3px 8px;margin-left:4px">話す</button>${p.single && p.affinity >= 0.5 && !this.state.partner ? `<button class="btn primary" data-life="propose" data-id="${p.id}" style="padding:3px 8px;margin-left:4px">プロポーズ</button>` : ''}</div>`).join('');
   },
 
   jobsList() {

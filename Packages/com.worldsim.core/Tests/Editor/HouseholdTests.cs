@@ -89,3 +89,33 @@ namespace WorldSim.Core.Tests
         }
     }
 }
+
+namespace WorldSim.Core.Tests
+{
+    /// <summary>S4-3: in life mode the player can marry someone they have grown close to.</summary>
+    public class MarriageTests
+    {
+        [Test]
+        public void ThePlayerCanMarryAfterGettingClose()
+        {
+            WorldState w = TestContent.Village(2, outsideRoad: true);
+            var adults = w.Economy.Citizens.Values.Where(c => c.HomeId != 0).OrderBy(c => c.Id).ToList();
+            Citizen me = adults[0];
+            Citizen other = adults.First(c => c.Id != me.Id && c.HomeId == me.HomeId);
+            Assert.IsTrue(Commands.CommandGate.Execute(w, Commands.Actor.Creator, new People.PossessCitizenCommand(me.Id)).Success);
+            w.Player.InsideBuildingId = me.HomeId; // at home, where the other resident also lives
+            var actor = Commands.Actor.Resident(me.Id);
+
+            World.CommandResult early = Commands.CommandGate.Execute(w, actor, new People.ProposeCommand(other.Id));
+            Assert.IsFalse(early.Success, "strangers do not marry");
+            for (int i = 0; i < 8; i++) Assert.IsTrue(Commands.CommandGate.Execute(w, actor, new People.TalkCommand(other.Id)).Success);
+            World.CommandResult yes = Commands.CommandGate.Execute(w, actor, new People.ProposeCommand(other.Id));
+            Assert.IsTrue(yes.Success, yes.Message);
+            Assert.AreEqual(other.Id, me.PartnerId);
+            Assert.AreEqual(me.Id, other.PartnerId);
+            Assert.AreEqual(me.HomeId, other.HomeId, "they live together");
+            Assert.IsFalse(Commands.CommandGate.Execute(w, actor, new People.ProposeCommand(adults.Last().Id)).Success, "only one partner");
+            Assert.IsEmpty(WorldValidator.Validate(w));
+        }
+    }
+}

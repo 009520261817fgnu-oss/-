@@ -61,7 +61,8 @@ namespace WorldSim.Core.Systems
                 if (c.Happiness < 0.3f && rng.Chance(0.01)) { leaving.Add((c, Cause.EmigratedUnhappy)); continue; }
                 if (c.JobId == 0 && c.UnemployedDays > 30 && c.IsWorkingAge(today) && rng.Chance(0.03)) { leaving.Add((c, Cause.EmigratedUnemployed)); continue; }
                 // Children are born to couples living together (counted once, by the partner with the lower id).
-                if (c.PartnerId > c.Id && age >= 20 && age <= 42 && c.HomeId != 0
+                // (When one partner is the player, the other one counts the couple, since the player is skipped above.)
+                if ((c.PartnerId > c.Id || c.PartnerId == player) && age >= 20 && age <= 42 && c.HomeId != 0
                     && e.Citizens.TryGetValue(c.PartnerId, out Citizen partner) && partner.HomeId == c.HomeId
                     && partner.AgeYears(today) >= 20 && partner.AgeYears(today) <= 42
                     && rng.Chance(Households.CoupleBirthRatePerYear / SimClock.DaysPerYear)

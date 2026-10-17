@@ -106,6 +106,9 @@ const check = (name, ok, extra) => { console.log((ok ? 'PASS ' : 'FAIL ') + name
   }
   // Panel lists.
   await ev(`showTab('life'); Life.show.jobs = true; renderPanel()`);
+  check('family section shown', await ev(`(showTab('life'), $('#panelBody').textContent.includes('家族'))`));
+  const prop = await ev(`(() => { const s = JSON.parse(api('LifeState')); const o = (s.family || [])[0]; return o ? JSON.parse(api('LifeExecute', JSON.stringify({ type: 'propose', id: o.id }))) : { ok: false, msg: 'nobody' }; })()`);
+  check('proposing to a stranger is refused with a reason', !prop.ok && prop.msg.length > 0, prop.msg);
   check('life panel renders profile and jobs', await ev(`$('#panelBody').textContent.includes('所持金') && $('#panelBody').textContent.includes('仕事を探す')`));
   // Gyro: synthetic orientation events turn the view.
   await ev(`Life.setCam('first')`);

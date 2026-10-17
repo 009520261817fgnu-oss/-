@@ -48,6 +48,7 @@ namespace WorldSim.Web
                 case "quit": cmd = new QuitJobCommand(); break;
                 case "move": cmd = new MoveHomeCommand(o.GetInt("id")); break;
                 case "talk": cmd = new TalkCommand(o.GetInt("id")); break;
+                case "propose": cmd = new ProposeCommand(o.GetInt("id")); break;
                 case "stop": cmd = new StopActivityCommand(); break;
                 default: return Result(CommandResult.Fail("不明な操作です"));
             }
@@ -117,6 +118,9 @@ namespace WorldSim.Web
                         };
                 }
             }
+            d["partner"] = c.PartnerId != 0 && w.Economy.Citizens.TryGetValue(c.PartnerId, out Citizen partner) ? Person(w, c, partner) : null;
+            d["children"] = w.Economy.Citizens.Values.Where(o => o.ParentId != 0 && (o.ParentId == c.Id || (c.PartnerId != 0 && o.ParentId == c.PartnerId)))
+                .Take(8).Select(o => (object)Person(w, c, o)).ToList();
             d["family"] = w.Economy.Citizens.Values.Where(o => o.Id != c.Id && o.HomeId != 0 && o.HomeId == c.HomeId)
                 .Take(8).Select(o => (object)Person(w, c, o)).ToList();
             d["friends"] = (c.Relations ?? new SortedDictionary<int, float>()).OrderByDescending(kv => kv.Value).Take(8)
@@ -132,6 +136,7 @@ namespace WorldSim.Web
                 ["id"] = o.Id, ["name"] = Names.Of(o.Id), ["age"] = o.AgeYears(w.Clock.TotalDays),
                 ["job"] = o.JobId != 0 && w.TryGetBuilding(o.JobId, out Building jb) ? jb.Def.Name : o.Retired ? "退職" : o.AgeYears(w.Clock.TotalDays) < 18 ? "学生" : "無職",
                 ["activity"] = act.ToString(), ["affinity"] = (double)me.Affinity(o.Id),
+                ["single"] = o.PartnerId == 0 && o.AgeYears(w.Clock.TotalDays) >= 18, ["partner"] = o.Id == me.PartnerId,
             };
         }
 

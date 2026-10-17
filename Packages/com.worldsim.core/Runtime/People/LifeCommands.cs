@@ -369,6 +369,46 @@ namespace WorldSim.Core.People
         }
     }
 
+    /// <summary>
+    /// Proposes to someone close (S4). Both must be adults and single, they must be close enough
+    /// (affinity, built by talking) and nearby as for talking; the couple then shares a home.
+    /// </summary>
+    public sealed class ProposeCommand : IResidentCommand
+    {
+        public const float AffinityNeeded = 0.5f;
+        public readonly int CitizenId;
+        public ProposeCommand(int citizenId) { CitizenId = citizenId; }
+
+        public CommandResult Execute(WorldState w, Citizen self)
+        {
+            long today = w.Clock.TotalDays;
+            if (CitizenId == self.Id || !w.Economy.Citizens.TryGetValue(CitizenId, out Citizen other)) return CommandResult.Fail("相手がいません");
+            if (self.PartnerId != 0) return CommandResult.Fail("すでにパートナーがいます");
+            if (other.PartnerId != 0) return CommandResult.Fail($"{Names.Of(other.Id)}にはパートナーがいます");
+            if (self.AgeYears(today) < 18 || other.AgeYears(today) < 18) return CommandResult.Fail("18歳以上どうしで結婚できます");
+            if (self.Affinity(other.Id) < AffinityNeeded || other.Affinity(self.Id) < AffinityNeeded)
+                return CommandResult.Fail($"まだそこまで親しくありません（親しさ {self.Affinity(other.Id) * 100:0}%／{AffinityNeeded * 100:0}%必要。話して親しくなりましょう）");
+            bool family = other.HomeId != 0 && other.HomeId == self.HomeId;
+            int place = w.Player.InsideBuildingId;
+            bool here = place != 0 && DailySchedule.At(w, other, w.Clock.HourOfDay, today).buildingId == place;
+            if (!family && !here) return CommandResult.Fail("近くにいません");
+            // Live together: the partner moves in, or the player moves to the partner's home.
+            if (other.HomeId != self.HomeId)
+            {
+                if (self.HomeId != 0 && Systems.Households.MoveTogether(w, other, self.HomeId, today)) { }
+                else if (other.HomeId != 0 && Systems.Households.MoveTogether(w, self, other.HomeId, today))
+                {
+                    if (w.Player.InsideBuildingId != 0) AvatarSystem.LeaveBuilding(w, w.Player);
+                }
+                else return CommandResult.Fail("二人で暮らせる空きのある住まいがありません");
+            }
+            Systems.Households.Marry(w.Economy, self, other);
+            self.Happiness = Math.Min(1f, self.Happiness + 0.1f);
+            w.Log("人生", $"{Names.Of(self.Id)}と{Names.Of(other.Id)}が結婚しました");
+            return CommandResult.Ok($"{Names.Of(other.Id)}と結婚しました。これからは同じ家で暮らします");
+        }
+    }
+
     public sealed class StopActivityCommand : IResidentCommand
     {
         public CommandResult Execute(WorldState w, Citizen self)

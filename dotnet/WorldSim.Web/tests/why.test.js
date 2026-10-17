@@ -69,6 +69,21 @@ const check = (name, ok, extra) => { console.log((ok ? 'PASS ' : 'FAIL ') + name
   const u = await ev(`JSON.parse(api('Explain','unemployment',3))`);
   const dem = u.parts.find((p) => p.label === '建物の撤去');
   check('demolition appears with the company', !!dem && dem.agents.some((a) => a.id === co.id), dem || u.parts.map(p => p.label));
+  // S2: the new buildings, rent and health are visible.
+  check('build list has construction company and clinic', await ev(`$('#drawer').textContent.includes('建設会社') && $('#drawer').textContent.includes('診療所')`));
+  await ev(`showTab('policy')`);
+  check('rent policy slider', await ev(`$('#panelBody').textContent.includes('家賃')`));
+  const home = await ev(`(() => { for (const b of JSON.parse(api('GetBuildings'))) { const i = JSON.parse(api('Inspect', b[2], b[3])); if (i && i.building && i.building.housing) return { x: b[2], z: b[3] }; } return null; })()`);
+  await ev(`inspectAt({ x: ${home.x}, z: ${home.z} })`);
+  await page.waitForTimeout(200);
+  check('home shows rent and land value', await ev(`$('#panelBody').textContent.includes('家賃') && $('#panelBody').textContent.includes('地価指数')`));
+  const builder = await ev(`(() => { for (const b of JSON.parse(api('GetBuildings'))) if (b[1] === 'construction') return { x: b[2], z: b[3] }; return null; })()`);
+  await ev(`inspectAt({ x: ${builder.x}, z: ${builder.z} })`);
+  await page.waitForTimeout(200);
+  check('construction company shows its order book', await ev(`$('#panelBody').textContent.includes('受注残')`));
+  const health = await ev(`JSON.parse(api('Explain','population',30))`);
+  check('population explanation available', health.ok, health.parts && health.parts.slice(0, 3).map((p) => p.label));
+
   // Phone layout.
   await page.setViewportSize({ width: 390, height: 844 });
   await ev(`Why.open('unemployment', 0)`);

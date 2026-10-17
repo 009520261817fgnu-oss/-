@@ -67,6 +67,53 @@ namespace WorldSim.Core.Tests
             Assert.IsFalse(InvestmentSystem.IncumbentsDoingWell(w, plant.Def), "losing money: imports are a cost problem, not a capacity problem");
         }
 
+        private static WorldState GovernedTown(long mode, long cityCash)
+        {
+            WorldState w = WorldFactory.Create(TestContent.Load(), TestContent.SmallOptions(7));
+            new SetPolicyCommand("autoGovernment", mode).Execute(w);
+            EconomyState e = w.Economy;
+            if (cityCash > e.City.Cash) e.Ledger.Transfer(e.External, e.City, cityCash - e.City.Cash, Flow.Investment);
+            else e.Ledger.Transfer(e.City, e.External, e.City.Cash - cityCash, Flow.Investment);
+            WorldFactory.CreateRunner(w).StepMany(100 * SimClock.TicksPerDay);
+            return w;
+        }
+
+        [Test]
+        public void TheGovernmentIsOffByDefault()
+        {
+            WorldState w = GovernedTown(0, 2_000_000_000);
+            Assert.AreEqual(new Policy().IncomeTax, w.Economy.City.Policy.IncomeTax);
+            Assert.AreEqual(0, w.Economy.City.Policy.IndustrySubsidyPerWorker);
+            Assert.IsFalse(w.Events.Any(e => e.Kind == "市政"));
+        }
+
+        [Test]
+        public void ARichCityCutsTaxesOrSupportsJobsAndSaysWhy()
+        {
+            WorldState w = GovernedTown(1, 3_000_000_000);
+            Policy p = w.Economy.City.Policy;
+            Assert.That(p.IncomeTax < new Policy().IncomeTax || p.IndustrySubsidyPerWorker > 0, "a large surplus is put to use");
+            WorldEvent ev = w.Events.First(e => e.Kind == "市政");
+            Assert.That(ev.Message.Contains("：") && ev.Message.Length > 10, "each decision states its reason: " + ev.Message);
+        }
+
+        [Test]
+        public void ABrokeCityRestoresItsFinances()
+        {
+            WorldState w = GovernedTown(1, 20_000_000);
+            Assert.Greater(w.Economy.City.Policy.IncomeTax, new Policy().IncomeTax, "low reserves: taxes go up");
+        }
+
+        [Test]
+        public void OnlyWhileLivingModeWaitsForAPlayer()
+        {
+            WorldState w = GovernedTown(2, 3_000_000_000);
+            Assert.IsFalse(w.Events.Any(e => e.Kind == "市政"), "nobody is being lived as");
+            Assert.IsFalse(GovernmentSystem.Active(w));
+            w.Player.CitizenId = w.Economy.Citizens.Keys.First();
+            Assert.IsTrue(GovernmentSystem.Active(w));
+        }
+
         [Test]
         public void UnitCostOnlyCountsLossMakingProducers()
         {

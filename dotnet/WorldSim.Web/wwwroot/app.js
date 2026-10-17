@@ -34,6 +34,7 @@ const POLICY = {
   preparedness: { label: '防災投資（1日）', min: 0, max: 20000000, step: 500000, fmt: yen, help: '積み重ねるほど災害の被害が減ります（最大50%）。' },
   repairBudget: { label: '復旧予算の上限（1日）', min: 0, max: 50000000, step: 1000000, fmt: yen, help: '被災した道路・建物の修理に使える上限。' },
   rent: { label: '家賃（大人1人1日・標準地）', min: 0, max: 5000, step: 50, fmt: yen, help: '市営住宅の家賃。地価が高い場所ほど高く（0.5〜1.5倍）、所得の低い世帯は安い住まいを選びます。払えないと退去になります。' },
+  autoGovernment: { label: '自治体の自動運営', min: 0, max: 2, step: 1, fmt: (v) => ['なし（自分で運営）', '常に', '人生体験中のみ'][v], help: '月に一度、財政の余力・失業率・家賃負担・被害を見て、税・補助・家賃・復旧予算を少しずつ調整します（理由はニュースに記録）。' },
   privateInvestment: { label: '民間投資', min: 0, max: 1, step: 1, fmt: (v) => (v ? '許可' : '禁止'), help: '輸入超過や品不足が続くと、市外の投資家が自分の資金で工場や商店を開業します（理由はニュースと「なぜ？」に記録）。' },
   electricityPrice: { label: '電気料金（kWh）', min: 5, max: 100, step: 1, fmt: (v) => v + '円', help: '発電所の収入、企業と家計の支出になります。' },
 };
@@ -1272,7 +1273,7 @@ function frame(t) {
   const eventKey = st.events + ':' + st.lastEventTick;
   if (eventKey !== S.eventKey) {
     const ev = japi('GetEvents', st.events - 1).events.pop();
-    if (ev && S.eventKey && /災害|技術|倒産|投資/.test(ev[1])) toast(`${ev[1]}：${ev[2]}`, ev[1] === '災害' || ev[1] === '倒産');
+    if (ev && S.eventKey && /災害|技術|倒産|投資|市政/.test(ev[1])) toast(`${ev[1]}：${ev[2]}`, ev[1] === '災害' || ev[1] === '倒産');
     if (ev && ev[1] === '技術') buildDrawer();
     S.eventKey = eventKey;
   }

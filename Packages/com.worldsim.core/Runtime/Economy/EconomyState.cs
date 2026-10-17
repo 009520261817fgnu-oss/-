@@ -27,9 +27,11 @@ namespace WorldSim.Core.Economy
         public long RentPerDay = 300;
         /// <summary>1: outside investors may open businesses where demand is unmet (S3). 0: only the player builds.</summary>
         public long PrivateInvestment = 1;
+        /// <summary>City government AI (S3): 0 off (the player governs), 1 always, 2 only while a resident is being lived as.</summary>
+        public long AutoGovernment;
 
         public static readonly string[] Keys =
-            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "unemploymentBenefit", "electricityPrice", "rent", "privateInvestment" };
+            { "incomeTax", "corporateTax", "industrySubsidy", "preparedness", "repairBudget", "pension", "unemploymentBenefit", "electricityPrice", "rent", "privateInvestment", "autoGovernment" };
 
         public double Get(string key)
         {
@@ -45,6 +47,7 @@ namespace WorldSim.Core.Economy
                 case "electricityPrice": return ElectricityPrice;
                 case "rent": return RentPerDay;
                 case "privateInvestment": return PrivateInvestment;
+                case "autoGovernment": return AutoGovernment;
                 default: throw new ArgumentException($"Unknown policy '{key}'");
             }
         }
@@ -65,6 +68,7 @@ namespace WorldSim.Core.Economy
                 case "electricityPrice": if (v < 5 || v > 100) return "電気料金は5〜100円/kWh"; ElectricityPrice = v; return null;
                 case "rent": if (v < 0 || v > 5000) return "家賃は0〜5,000円/人日"; RentPerDay = (long)v; return null;
                 case "privateInvestment": if (v != 0 && v != 1) return "民間投資は 0（禁止）か 1（許可）"; PrivateInvestment = (long)v; return null;
+                case "autoGovernment": if (v != 0 && v != 1 && v != 2) return "自治体の自動運営は 0・1・2"; AutoGovernment = (long)v; return null;
                 default: return $"未知の政策 '{key}'";
             }
         }

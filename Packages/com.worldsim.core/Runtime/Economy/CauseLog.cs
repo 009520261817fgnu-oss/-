@@ -55,6 +55,7 @@ namespace WorldSim.Core.Economy
         PriceCostPush = 35,
         InvestedForImports = 36,
         InvestedForUnmetDemand = 37,
+        GovernmentDecision = 38,
     }
 
     /// <summary>What a daily total measures. Saved: append only.</summary>

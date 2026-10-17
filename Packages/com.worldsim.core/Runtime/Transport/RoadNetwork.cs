@@ -171,7 +171,7 @@ namespace WorldSim.Core.Transport
 
             float speed = BaseSpeedKmh * (float)(1 + _w.Effects.Global("roadSpeed"));
             float baseHours = _w.Terrain.CellSize / 1000f / Math.Max(1f, speed);
-            float[] traffic = _w.TrafficVolume;
+            float[] traffic = _w.CongestionBasis;
             _nodeHours = new float[_cellOfNode.Length];
             _adj = new int[_cellOfNode.Length][];
             var nb = new List<int>(4);

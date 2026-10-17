@@ -36,8 +36,8 @@ namespace WorldSim.Core
                 case null: sb.Append("null"); break;
                 case string s: WriteString(sb, s); break;
                 case bool b: sb.Append(b ? "true" : "false"); break;
-                case double d: sb.Append(d.ToString("R", CultureInfo.InvariantCulture)); break;
-                case float f: sb.Append(((double)f).ToString("R", CultureInfo.InvariantCulture)); break;
+                case double d: WriteNumber(sb, d); break;
+                case float f: WriteNumber(sb, f); break;
                 case int i: sb.Append(i.ToString(CultureInfo.InvariantCulture)); break;
                 case long l: sb.Append(l.ToString(CultureInfo.InvariantCulture)); break;
                 case IDictionary<string, object> dict:
@@ -67,6 +67,12 @@ namespace WorldSim.Core
                 default:
                     throw new ArgumentException($"Unsupported JSON value type {value.GetType()}");
             }
+        }
+
+        private static void WriteNumber(StringBuilder sb, double d)
+        {
+            if (double.IsNaN(d) || double.IsInfinity(d)) throw new ArgumentException("JSON cannot represent NaN or Infinity");
+            sb.Append(d.ToString("R", CultureInfo.InvariantCulture));
         }
 
         private static void WriteString(StringBuilder sb, string s)

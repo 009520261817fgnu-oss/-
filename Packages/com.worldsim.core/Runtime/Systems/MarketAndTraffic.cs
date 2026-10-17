@@ -74,6 +74,7 @@ namespace WorldSim.Core.Systems
 
             if (w.Clock.TotalDays % RerouteIntervalDays == 0)
             {
+                System.Array.Copy(tv, w.CongestionBasis, tv.Length);
                 w.Network.Invalidate();
                 foreach (Citizen c in e.Citizens.Values)
                     if (c.JobId != 0 && c.HomeId != 0)

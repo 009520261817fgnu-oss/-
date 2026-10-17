@@ -15,7 +15,7 @@ namespace WorldSim.Core.Systems
     {
         public const int DistressDaysToClose = 14;
         public const int ReopenCheckDays = 30;
-        public const long RoadMaintenancePerCell = 200;
+        public const long RoadMaintenancePerCell = 100;
         /// <summary>Share of excess cash paid out per day = 1 / DividendDivisor.</summary>
         public const long DividendDivisor = 20;
 

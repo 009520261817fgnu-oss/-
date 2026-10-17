@@ -57,7 +57,7 @@ namespace WorldSim.Core.Tests
             WorldState w = LoopVillage(false);
             int m = TestContent.PlaceSouth(w, "mine", 4), s = TestContent.PlaceSouth(w, "steel_mill", 38);
             float free = w.Network.TravelHours(m, s);
-            for (int x = 2; x <= 45; x++) w.TrafficVolume[10 * w.Width + x] = RoadNetwork.CellCapacityPerDay * 2;
+            for (int x = 2; x <= 45; x++) w.CongestionBasis[10 * w.Width + x] = RoadNetwork.CellCapacityPerDay * 2;
             w.Network.Invalidate();
             float jammed = w.Network.TravelHours(m, s);
             Assert.Greater(jammed, free * 1.3f, "with the main road jammed, travel slows (or reroutes)");

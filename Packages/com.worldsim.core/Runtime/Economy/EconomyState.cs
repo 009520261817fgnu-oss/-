@@ -8,7 +8,7 @@ namespace WorldSim.Core.Economy
     public sealed class Policy
     {
         public double IncomeTax = 0.20;
-        public double CorporateTax = 0.20;
+        public double CorporateTax = 0.30;
         /// <summary>Yen per industrial/agricultural worker per day paid to companies.</summary>
         public long IndustrySubsidyPerWorker;
         /// <summary>Yen per day invested in disaster preparedness (levees, drills, retrofits).</summary>

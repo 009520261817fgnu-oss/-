@@ -41,6 +41,11 @@ namespace WorldSim.Core.World
         public TechEffects Effects { get; }
         /// <summary>Vehicles per day on each cell yesterday (commuters, shoppers, freight).</summary>
         public float[] TrafficVolume { get; }
+        /// <summary>
+        /// Volumes the road network currently uses for congestion. Copied from TrafficVolume when
+        /// routes are recomputed, so travel times depend only on saved state (exact save/resume).
+        /// </summary>
+        public float[] CongestionBasis { get; }
         public List<WorldEvent> Events { get; } = new List<WorldEvent>();
         /// <summary>Trips generated today (transient; turned into TrafficVolume at day end).</summary>
         public List<Trip> Trips { get; } = new List<Trip>();
@@ -63,6 +68,7 @@ namespace WorldSim.Core.World
             _road = new bool[cells];
             _roadDamaged = new bool[cells];
             TrafficVolume = new float[cells];
+            CongestionBasis = new float[cells];
             _vegetation = vegetation ?? new byte[cells];
             if (_vegetation.Length != cells) throw new ArgumentException("Vegetation size mismatch", nameof(vegetation));
             Environment = new EnvironmentState(terrain.Width, terrain.Depth);

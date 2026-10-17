@@ -16,6 +16,7 @@ namespace WorldSim.Core.Systems
         public const int DistressDaysToClose = 14;
         public const int ReopenCheckDays = 30;
         public const long RoadMaintenancePerCell = 100;
+        public const int MaxAbsenceDays = 3;
         /// <summary>Share of excess cash paid out per day = 1 / DividendDivisor.</summary>
         public const long DividendDivisor = 20;
 
@@ -29,6 +30,8 @@ namespace WorldSim.Core.Systems
             Ledger l = e.Ledger;
 
             foreach (Citizen c in e.Citizens.Values) c.LastNetIncome = 0;
+            Citizen player = w.Player.IsActive && e.Citizens.TryGetValue(w.Player.CitizenId, out Citizen pc) ? pc : null;
+            bool workday = People.DailySchedule.IsWorkday(w.Clock.TotalDays);
 
             foreach (Company co in e.Companies.Values)
             {
@@ -38,8 +41,12 @@ namespace WorldSim.Core.Systems
                 foreach (int id in co.Workers)
                 {
                     if (!e.Citizens.TryGetValue(id, out Citizen c)) continue;
-                    long paid = l.TransferUpTo(payer, c, co.Wage, Flow.Wages);
-                    if (paid < co.Wage) shortfall = true;
+                    // Promotions raise pay for everyone; the player is paid for the hours actually worked.
+                    double share = c == player && workday ? Math.Min(1.0, w.Player.WorkedHours / 8.0) : 1.0;
+                    long due = (long)Math.Round(co.Wage * c.WageFactor * share);
+                    long paid = l.TransferUpTo(payer, c, due, Flow.Wages);
+                    if (paid < due) shortfall = true;
+                    if (c != player || !workday || w.Player.WorkedHours >= 4) c.TenureDays++;
                     if (!co.IsPublic) co.CostToday += paid;
                     long tax = (long)Math.Round(paid * p.IncomeTax);
                     l.Transfer(c, e.City, Math.Min(tax, c.Cash), Flow.IncomeTax);
@@ -56,8 +63,10 @@ namespace WorldSim.Core.Systems
                 co.DistressDays = shortfall ? co.DistressDays + 1 : 0;
             }
 
+            if (player != null) SettleAttendance(w, player, workday);
+
             long today = w.Clock.TotalDays;
-                        foreach (Citizen c in e.Citizens.Values)
+            foreach (Citizen c in e.Citizens.Values)
             {
                 if (c.Retired) c.LastNetIncome = l.TransferUpTo(e.City, c, p.PensionPerDay, Flow.Pension);
                 else if (c.JobId == 0 && c.HomeId != 0 && c.IsWorkingAge(today))
@@ -125,6 +134,24 @@ namespace WorldSim.Core.Systems
                 c.LastNetIncome += each;
             }
             e.Ledger.Transfer(e.City, e.External, pool - each * adults.Count, Flow.Dividends);
+        }
+
+        /// <summary>Missing work several workdays in a row gets the player fired, like any employer would.</summary>
+        private static void SettleAttendance(WorldState w, Citizen player, bool workday)
+        {
+            People.PlayerState p = w.Player;
+            if (player.JobId != 0 && workday)
+            {
+                if (p.WorkedHours < 4) p.AbsenceDays++;
+                else p.AbsenceDays = 0;
+                if (p.AbsenceDays >= MaxAbsenceDays && w.Economy.Companies.TryGetValue(player.JobId, out Company co))
+                {
+                    w.Economy.Fire(player);
+                    p.AbsenceDays = 0;
+                    w.Log("人生", $"{People.Names.Of(player.Id)}は無断欠勤が続き、{co.Def.Name}を解雇されました");
+                }
+            }
+            p.WorkedHours = 0;
         }
 
         private static void Close(WorldState w, Company co)

@@ -46,6 +46,7 @@ namespace WorldSim.Core.Bootstrap
         public static SimulationRunner CreateRunner(WorldState world)
         {
             var runner = new SimulationRunner(world);
+            runner.AddSystem(new People.AvatarSystem()); // hourly: the controlled resident's needs and work hours
             ISimulationSystem[] daily =
             {
                 new WeatherSystem(), new DisasterSystem(), new LaborSystem(), new EnergySystem(), new ResearchSystem(),

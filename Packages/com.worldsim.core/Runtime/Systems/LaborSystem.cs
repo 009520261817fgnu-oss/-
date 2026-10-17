@@ -51,7 +51,12 @@ namespace WorldSim.Core.Systems
                 while (co.Workers.Count > co.TargetWorkers)
                 {
                     int last = co.Workers[co.Workers.Count - 1];
-                    if (e.Citizens.TryGetValue(last, out Citizen c)) e.Fire(c);
+                    if (e.Citizens.TryGetValue(last, out Citizen c))
+                    {
+                        e.Fire(c);
+                        if (c.Id == w.Player.CitizenId)
+                            w.Log("人生", $"{People.Names.Of(c.Id)}は{co.Def.Name}の人員削減で解雇されました");
+                    }
                     else co.Workers.RemoveAt(co.Workers.Count - 1);
                 }
             }
@@ -103,6 +108,7 @@ namespace WorldSim.Core.Systems
             {
                 if (vacancies.Count == 0 || applicants >= maxApplicants) break;
                 if (c.Retired || c.HomeId == 0 || !c.IsWorkingAge(today)) continue;
+                if (c.Id == w.Player.CitizenId) continue; // the player chooses their own job
                 double current = 0;
                 if (c.JobId != 0)
                 {
@@ -119,6 +125,7 @@ namespace WorldSim.Core.Systems
                     float h = w.Network.TravelHours(c.HomeId, co.BuildingId);
                     if (h > MaxCommuteHours) continue;
                     if (co.BuildingId == c.JobId) continue;
+                    if (c.Education < co.Def.GetParam("minEducation")) continue;
                     double u = Utility(co.Wage, c, h);
                     if (u > bestUtility) { bestUtility = u; best = co; bestHours = h; }
                 }
@@ -127,6 +134,17 @@ namespace WorldSim.Core.Systems
                 c.CommuteHours = bestHours;
                 if (best.Workers.Count >= best.TargetWorkers) vacancies.Remove(best);
             }
+        }
+
+        /// <summary>Why a resident cannot take this job (null if they can). Same rule for everyone.</summary>
+        public static string Ineligible(WorldState w, Citizen c, Company co)
+        {
+            int need = (int)co.Def.GetParam("minEducation");
+            if (c.Education < need) return need >= 2 ? "高等教育が必要です（学校で職業訓練を受けられます）" : "中等教育以上が必要です（学校で職業訓練を受けられます）";
+            if (c.HomeId == 0) return "住まいがないと就職できません";
+            float h = w.Network.TravelHours(c.HomeId, co.BuildingId);
+            if (h > MaxCommuteHours) return float.IsPositiveInfinity(h) ? "自宅から道路でつながっていません" : "自宅から遠すぎます";
+            return null;
         }
 
         private static double Utility(long wage, Citizen c, float commuteHours) =>

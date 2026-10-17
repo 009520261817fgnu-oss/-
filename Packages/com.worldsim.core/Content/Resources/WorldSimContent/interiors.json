@@ -1,0 +1,39 @@
+{
+  "interiors": [
+    { "id": "home", "for": ["Residential"], "width": 10, "depth": 8, "door": [5, 0],
+      "fixtures": [
+        { "type": "bed",    "label": "ベッド（眠る）",   "x": 0.5, "z": 5.0, "w": 2.2, "d": 2.5 },
+        { "type": "fridge", "label": "冷蔵庫（食べる）", "x": 8.6, "z": 6.4, "w": 1.0, "d": 1.0 },
+        { "type": "sofa",   "label": "ソファ（休む）",   "x": 4.0, "z": 6.6, "w": 2.6, "d": 1.0 }
+      ] },
+    { "id": "shop", "for": ["shop"], "width": 12, "depth": 9, "door": [6, 0],
+      "fixtures": [
+        { "type": "counter",     "label": "レジ（買い物）", "x": 4.5, "z": 6.5, "w": 3.0, "d": 1.0 },
+        { "type": "workstation", "label": "売り場（働く）", "x": 0.5, "z": 3.0, "w": 1.5, "d": 4.0 }
+      ] },
+    { "id": "office", "for": ["office"], "width": 16, "depth": 12, "door": [8, 0],
+      "fixtures": [
+        { "type": "counter",     "label": "窓口（サービスを受ける）", "x": 6.0, "z": 2.5, "w": 4.0, "d": 1.0 },
+        { "type": "workstation", "label": "デスク（働く）",          "x": 2.0, "z": 7.0, "w": 12.0, "d": 1.2 }
+      ] },
+    { "id": "factory", "for": ["Industrial", "Agriculture", "Power"], "width": 24, "depth": 16, "door": [12, 0],
+      "fixtures": [
+        { "type": "workstation", "label": "作業ライン（働く）", "x": 3.0, "z": 6.0, "w": 18.0, "d": 2.0 },
+        { "type": "workstation", "label": "保管・出荷（働く）", "x": 3.0, "z": 12.0, "w": 6.0, "d": 2.5 }
+      ] },
+    { "id": "town_hall", "for": ["town_hall"], "width": 16, "depth": 12, "door": [8, 0],
+      "fixtures": [
+        { "type": "jobboard",    "label": "求人掲示板",       "x": 1.0, "z": 4.0, "w": 0.6, "d": 3.0 },
+        { "type": "workstation", "label": "事務室（働く）",   "x": 6.0, "z": 9.0, "w": 8.0, "d": 1.2 }
+      ] },
+    { "id": "school", "for": ["school"], "width": 18, "depth": 12, "door": [9, 0],
+      "fixtures": [
+        { "type": "classroom",   "label": "教室（職業訓練を受ける）", "x": 3.0, "z": 5.0, "w": 12.0, "d": 4.0 },
+        { "type": "workstation", "label": "職員室（働く）",           "x": 14.5, "z": 1.5, "w": 3.0, "d": 1.2 }
+      ] },
+    { "id": "public", "for": ["Public"], "width": 14, "depth": 10, "door": [7, 0],
+      "fixtures": [
+        { "type": "workstation", "label": "職場（働く）", "x": 3.0, "z": 5.0, "w": 8.0, "d": 1.5 }
+      ] }
+  ]
+}

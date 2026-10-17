@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using WorldSim.Core.Content;
 using WorldSim.Core.Economy;
 using WorldSim.Core.Environment;
+using WorldSim.Core.People;
 using WorldSim.Core.Simulation;
 using WorldSim.Core.Transport;
 
@@ -47,6 +48,8 @@ namespace WorldSim.Core.World
         /// </summary>
         public float[] CongestionBasis { get; }
         public List<WorldEvent> Events { get; } = new List<WorldEvent>();
+        /// <summary>The resident the player lives as (life mode); inactive when CitizenId is 0.</summary>
+        public PlayerState Player { get; } = new PlayerState();
         /// <summary>Trips generated today (transient; turned into TrafficVolume at day end).</summary>
         public List<Trip> Trips { get; } = new List<Trip>();
         public List<StatsSnapshot> History { get; } = new List<StatsSnapshot>();
@@ -328,6 +331,45 @@ namespace WorldSim.Core.World
             e.Occupancy.Remove(b.Id);
         }
 
+        /// <summary>
+        /// The door of a building: the middle of the footprint edge that faces a road (south edge if
+        /// none), as world metres, plus the outward direction.
+        /// </summary>
+        public (float x, float z, float nx, float nz) DoorOf(Building b)
+        {
+            GridRect r = b.Footprint;
+            float cs = Terrain.CellSize;
+            (int dx, int dz)[] sides = { (0, -1), (0, 1), (-1, 0), (1, 0) };
+            foreach (var (dx, dz) in sides)
+            {
+                bool road = false;
+                if (dz != 0)
+                    for (int x = r.MinX; x < r.MaxX && !road; x++) road = HasRoad(new GridPos(x, dz < 0 ? r.MinZ - 1 : r.MaxZ));
+                else
+                    for (int z = r.MinZ; z < r.MaxZ && !road; z++) road = HasRoad(new GridPos(dx < 0 ? r.MinX - 1 : r.MaxX, z));
+                if (!road) continue;
+                return DoorOn(r, cs, dx, dz);
+            }
+            return DoorOn(r, cs, 0, -1);
+        }
+
+        private static (float, float, float, float) DoorOn(GridRect r, float cs, int dx, int dz)
+        {
+            float cx = (r.MinX + r.MaxX) * 0.5f * cs, cz = (r.MinZ + r.MaxZ) * 0.5f * cs;
+            if (dz < 0) return (cx, r.MinZ * cs, 0, -1);
+            if (dz > 0) return (cx, r.MaxZ * cs, 0, 1);
+            if (dx < 0) return (r.MinX * cs, cz, -1, 0);
+            return (r.MaxX * cs, cz, 1, 0);
+        }
+
+        /// <summary>A person can stand here outdoors: inside the map, not in a building, not in the sea.</summary>
+        public bool IsWalkable(float x, float z)
+        {
+            GridPos c = Terrain.WorldToCell(x, z);
+            if (!Terrain.InBounds(c) || _occupant[Index(c)] != 0) return false;
+            return Terrain.SampleHeight(x, z) > Terrain.SeaLevel - 0.3f || HasRoad(c);
+        }
+
         // Used by persistence to rebuild a saved world exactly.
         internal Building RestoreBuilding(int id, BuildingDef def, GridPos origin, float baseHeight, float condition)
         {
@@ -469,6 +511,14 @@ namespace WorldSim.Core.World
             }
             foreach (var kv in e.Market.Price) { h.Add(kv.Key); h.Add(kv.Value); }
             foreach (string t in e.City.Research.Completed) h.Add(t);
+            foreach (Citizen c in e.Citizens.Values)
+            {
+                h.Add(c.TenureDays);
+                if (c.Relations != null) foreach (var kv in c.Relations) { h.Add(kv.Key); h.Add(kv.Value); }
+            }
+            PlayerState pl = Player;
+            h.Add(pl.CitizenId); h.Add(pl.X); h.Add(pl.Z); h.Add(pl.InsideBuildingId); h.Add((int)pl.Activity);
+            h.Add(pl.Hunger); h.Add(pl.Energy); h.Add(pl.Pantry); h.Add(pl.WorkedHours); h.Add(pl.AbsenceDays); h.Add(pl.TravelArrive);
             h.Add(e.City.Research.Progress);
             h.Add(Environment.SoilMoisture);
             foreach (float p in Environment.Pollution) h.Add(p);

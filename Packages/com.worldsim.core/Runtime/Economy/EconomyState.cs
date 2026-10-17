@@ -178,6 +178,7 @@ namespace WorldSim.Core.Economy
             co.Workers.Add(c.Id);
             c.JobId = co.BuildingId;
             c.UnemployedDays = 0;
+            c.TenureDays = 0;
         }
 
         public void Fire(Citizen c)

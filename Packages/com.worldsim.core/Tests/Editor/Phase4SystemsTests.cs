@@ -18,6 +18,7 @@ namespace WorldSim.Core.Tests
         public void LabsResearchTheChosenTechnology()
         {
             WorldState w = TestContent.Village(3, outsideRoad: true);
+            foreach (var c in w.Economy.Citizens.Values) c.Education = 2; // labs hire graduates
             TestContent.PlaceSouth(w, "research_lab", 4);
             int plant = TestContent.PlaceSouth(w, "power_plant", 10);
             // A full-size plant cannot live off one small village's bills; fund it for the test's duration.

@@ -59,6 +59,13 @@ namespace WorldSim.Core.Simulation
             foreach (float v in w.TrafficVolume)
                 if (!Finite(v) || v < 0) { problems.Add("交通量が不正"); break; }
             if (!Finite(w.Environment.EnergyRatio)) problems.Add("電力比率が不正");
+            People.PlayerState pl = w.Player;
+            if (pl.IsActive)
+            {
+                if (!e.Citizens.ContainsKey(pl.CitizenId)) problems.Add("操作中の人物が存在しません");
+                if (pl.InsideBuildingId != 0 && !w.TryGetBuilding(pl.InsideBuildingId, out _)) problems.Add("人物が存在しない建物の中にいます");
+                if (pl.Pantry < 0 || !Finite(pl.Hunger) || !Finite(pl.Energy)) problems.Add("人物の状態が不正");
+            }
             return problems;
         }
 

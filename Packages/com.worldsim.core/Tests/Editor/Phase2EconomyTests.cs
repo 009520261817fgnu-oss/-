@@ -62,7 +62,10 @@ namespace WorldSim.Core.Tests
             }
 
             Assert.Greater(plant.Workers.Count, 0, "the new plant hired");
-            Assert.Greater(b.History.Last().Employed, a.History.Last().Employed, "more people are employed");
+            // With idle workers the plant adds jobs; at full employment it hires away from other employers.
+            StatsSnapshot la = a.History.Last(), lb = b.History.Last();
+            Assert.That(lb.Employed > la.Employed || lb.Vacancies > la.Vacancies,
+                $"more jobs are filled or demand for labour rises (employed {la.Employed}->{lb.Employed}, vacancies {la.Vacancies}->{lb.Vacancies})");
             Assert.Greater(b.History.Sum(s => s.Wages), a.History.Sum(s => s.Wages), "more wages were paid");
             Assert.Greater(plantOutput, 0, $"the new plant bought grain and produced food (grain={plant.Stock("grain")} shortage={plant.InputShortage} outside={b.Network.HasOutsideConnection} eff={b.Environment.EnergyRatio} broken={plant.BrokenDays} workers={plant.Workers.Count} cap={plant.OutputCapacity} grainprice={b.Economy.Market.GetPrice("grain")} power={string.Join(",", b.Economy.Companies.Values.Where(c => c.PowerOutput > 0).Select(c => $"{c.Workers.Count}/{c.TargetWorkers} closed={c.Closed} cond={(b.TryGetBuilding(c.BuildingId, out var pb) ? pb.Condition : -1)}"))} supply={b.Environment.EnergySupply} demand={b.Environment.EnergyDemand})");
         }

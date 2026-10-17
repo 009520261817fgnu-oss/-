@@ -16,11 +16,25 @@ namespace WorldSim.Core.Content
         private readonly Registry<ResourceDef> _resources = new Registry<ResourceDef>("resource", d => d.Id);
         private readonly Registry<RecipeDef> _recipes = new Registry<RecipeDef>("recipe", d => d.Id);
         private readonly Registry<TechDef> _techs = new Registry<TechDef>("tech", d => d.Id);
+        private readonly Registry<InteriorDef> _interiors = new Registry<InteriorDef>("interior", d => d.Id);
 
         public IEnumerable<BuildingDef> Buildings => _buildings.All;
         public IEnumerable<ResourceDef> Resources => _resources.All;
         public IEnumerable<RecipeDef> Recipes => _recipes.All;
         public IEnumerable<TechDef> Techs => _techs.All;
+        public IEnumerable<InteriorDef> Interiors => _interiors.All;
+
+        /// <summary>Interior for a building type: a definition naming the building id wins over one naming its category.</summary>
+        public InteriorDef InteriorFor(BuildingDef b)
+        {
+            InteriorDef byCategory = null;
+            foreach (InteriorDef i in _interiors.All)
+            {
+                if (Array.IndexOf(i.For, b.Id) >= 0) return i;
+                if (byCategory == null && Array.IndexOf(i.For, b.Category.ToString()) >= 0) byCategory = i;
+            }
+            return byCategory;
+        }
 
         public bool TryGetBuilding(string id, out BuildingDef def) => _buildings.TryGet(id, out def);
         public BuildingDef GetBuilding(string id) => _buildings.Get(id);
@@ -48,6 +62,7 @@ namespace WorldSim.Core.Content
             foreach (var o in Items(root, "recipes")) _recipes.Add(ParseRecipe(o));
             foreach (var o in Items(root, "buildings")) _buildings.Add(ParseBuilding(o));
             foreach (var o in Items(root, "techs")) _techs.Add(ParseTech(o));
+            foreach (var o in Items(root, "interiors")) _interiors.Add(ParseInterior(o));
         }
 
         public void AddBuilding(BuildingDef def) => _buildings.Add(def);
@@ -159,6 +174,41 @@ namespace WorldSim.Core.Content
             };
             ReadNumbers(o.GetObject("effects"), def.Effects, ctx);
             if (def.Cost <= 0) throw new FormatException($"{ctx}: cost must be positive");
+            return def;
+        }
+
+        private static readonly string[] FixtureTypes = { "bed", "fridge", "sofa", "counter", "workstation", "jobboard", "classroom" };
+
+        private static InteriorDef ParseInterior(IDictionary<string, object> o)
+        {
+            string id = o.RequireString("id", "interior");
+            string ctx = $"interior '{id}'";
+            var def = new InteriorDef
+            {
+                Id = id,
+                For = StringArray(o, "for", ctx),
+                Width = (float)o.GetDouble("width", 10),
+                Depth = (float)o.GetDouble("depth", 8),
+            };
+            IList<object> door = o.GetArray("door");
+            if (door != null && door.Count == 2) { def.DoorX = (float)(double)door[0]; def.DoorZ = (float)(double)door[1]; }
+            else def.DoorX = def.Width / 2;
+            if (def.Width < 3 || def.Depth < 3 || def.Width > 60 || def.Depth > 60) throw new FormatException($"{ctx}: room must be 3..60 m");
+            IList<object> fixtures = o.GetArray("fixtures");
+            if (fixtures != null)
+                foreach (object f in fixtures)
+                {
+                    var fo = f as IDictionary<string, object> ?? throw new FormatException($"{ctx}: fixtures must be objects");
+                    var fx = new FixtureDef
+                    {
+                        Type = fo.RequireString("type", ctx), Label = fo.GetString("label"),
+                        X = (float)fo.GetDouble("x"), Z = (float)fo.GetDouble("z"),
+                        W = (float)fo.GetDouble("w", 1), D = (float)fo.GetDouble("d", 1),
+                    };
+                    if (Array.IndexOf(FixtureTypes, fx.Type) < 0) throw new FormatException($"{ctx}: unknown fixture type '{fx.Type}'");
+                    if (fx.X < 0 || fx.Z < 0 || fx.X + fx.W > def.Width || fx.Z + fx.D > def.Depth) throw new FormatException($"{ctx}: fixture '{fx.Type}' outside the room");
+                    def.Fixtures.Add(fx);
+                }
             return def;
         }
 

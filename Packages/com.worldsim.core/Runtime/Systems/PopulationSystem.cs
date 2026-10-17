@@ -37,9 +37,16 @@ namespace WorldSim.Core.Systems
             var leaving = new List<Citizen>();
             var dying = new List<Citizen>();
             var newborns = new List<Citizen>();
+            int player = w.Player.CitizenId;
             foreach (Citizen c in e.Citizens.Values)
             {
                 int age = c.AgeYears(today);
+                if (c.Id == player)
+                {
+                    // The player's life choices (moving, leaving town) are theirs; ageing still applies.
+                    if (c.JobId == 0 && !c.Retired && c.IsWorkingAge(today)) c.UnemployedDays++;
+                    continue;
+                }
                 if (age >= 60 && rng.Chance(0.01 * Math.Exp((age - 60) / 8.0) / SimClock.DaysPerYear)) { dying.Add(c); continue; }
                 if (c.HomeId == 0)
                 {

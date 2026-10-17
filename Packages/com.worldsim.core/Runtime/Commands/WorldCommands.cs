@@ -12,7 +12,7 @@ namespace WorldSim.Core.Commands
         CommandResult Execute(WorldState world);
     }
 
-    public sealed class PlaceBuildingCommand : IWorldCommand
+    public sealed class PlaceBuildingCommand : ICreatorCommand
     {
         public readonly string DefId;
         public readonly GridPos Origin;
@@ -20,14 +20,14 @@ namespace WorldSim.Core.Commands
         public CommandResult Execute(WorldState world) => world.TryPlaceBuilding(DefId, Origin);
     }
 
-    public sealed class BulldozeCommand : IWorldCommand
+    public sealed class BulldozeCommand : ICreatorCommand
     {
         public readonly GridPos Cell;
         public BulldozeCommand(GridPos cell) { Cell = cell; }
         public CommandResult Execute(WorldState world) => world.TryBulldoze(Cell);
     }
 
-    public sealed class BuildRoadCommand : IWorldCommand
+    public sealed class BuildRoadCommand : ICreatorCommand
     {
         public readonly GridPos From;
         public readonly GridPos To;
@@ -35,7 +35,7 @@ namespace WorldSim.Core.Commands
         public CommandResult Execute(WorldState world) => world.TryBuildRoad(From, To);
     }
 
-    public sealed class RaiseTerrainCommand : IWorldCommand
+    public sealed class RaiseTerrainCommand : ICreatorCommand
     {
         public readonly int VertexX, VertexZ;
         public readonly float Radius, Delta;
@@ -48,7 +48,7 @@ namespace WorldSim.Core.Commands
         public CommandResult Execute(WorldState world) => world.TryRaiseTerrain(VertexX, VertexZ, Radius, Delta);
     }
 
-    public sealed class FlattenTerrainCommand : IWorldCommand
+    public sealed class FlattenTerrainCommand : ICreatorCommand
     {
         public readonly int VertexX, VertexZ;
         public readonly float Radius, TargetHeight;
@@ -67,7 +67,7 @@ namespace WorldSim.Core.Commands
     using WorldSim.Core.Systems;
 
     /// <summary>Changes one city policy (tax rates, subsidies, budgets). See Policy.Keys.</summary>
-    public sealed class SetPolicyCommand : IWorldCommand
+    public sealed class SetPolicyCommand : ICreatorCommand
     {
         public readonly string Key;
         public readonly double Value;
@@ -83,7 +83,7 @@ namespace WorldSim.Core.Commands
     }
 
     /// <summary>Chooses the technology the city's labs work on next.</summary>
-    public sealed class SetResearchCommand : IWorldCommand
+    public sealed class SetResearchCommand : ICreatorCommand
     {
         public readonly string TechId;
         public SetResearchCommand(string techId) { TechId = techId; }
@@ -100,7 +100,7 @@ namespace WorldSim.Core.Commands
     }
 
     /// <summary>Starts a disaster now (scenario play and testing).</summary>
-    public sealed class TriggerDisasterCommand : IWorldCommand
+    public sealed class TriggerDisasterCommand : ICreatorCommand
     {
         public readonly DisasterKind Kind;
         public readonly GridPos Epicenter;

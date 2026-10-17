@@ -41,6 +41,7 @@ namespace WorldSim.Core.Systems
             foreach (Citizen c in e.Citizens.Values)
             {
                 if (c.HomeId == 0 || c.AgeYears(today) < 18) continue;
+                if (c.Id == w.Player.CitizenId) continue; // the player shops in person
                 List<int> shops = NearbyRetail(w, c.HomeId);
                 double budget = Math.Min(c.Cash, SpendShareOfIncome * c.LastNetIncome + SpendShareOfSavings * c.Cash);
                 double spent = 0;

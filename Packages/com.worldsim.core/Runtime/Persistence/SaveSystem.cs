@@ -19,7 +19,8 @@ namespace WorldSim.Core.Persistence
     public static class SaveSystem
     {
         public const string Format = "WorldSim.Save";
-        public const int Version = 1;
+        /// <summary>2: adds the controlled resident (life mode), tenure and relationships. 1 still loads.</summary>
+        public const int Version = 2;
 
         public static string Save(WorldState w)
         {
@@ -48,6 +49,7 @@ namespace WorldSim.Core.Persistence
                 ["events"] = Events(w),
                 ["trips"] = Trips(w),
                 ["history"] = HistoryCodec.Encode(w.History),
+                ["player"] = Player(w.Player),
             };
             return Json.Serialize(root);
         }
@@ -93,6 +95,7 @@ namespace WorldSim.Core.Persistence
                 w.Trips.Add(new Trip(I(a[0]), I(a[1]), (float)D(a[2]), (bool)a[3]));
             }
             w.History.AddRange(HistoryCodec.Decode(Obj(root, "history")));
+            if (version >= 2) LoadPlayer(w, Obj(root, "player"));
             w.RestoreNextId(root.GetInt("nextId"));
             return w;
         }
@@ -114,7 +117,8 @@ namespace WorldSim.Core.Persistence
                 {
                     c.Id, (double)c.Cash, (double)c.BirthDay, c.HomeId, c.JobId, c.Education, c.Retired,
                     (double)c.Happiness, (double)c.CommuteHours, c.UnemployedDays, (double)c.LastNetIncome,
-                    (double)c.FoodMet, (double)c.GoodsMet, (double)c.ServicesMet, c.SchoolDays,
+                    (double)c.FoodMet, (double)c.GoodsMet, (double)c.ServicesMet, c.SchoolDays, c.TenureDays,
+                    Relations(c),
                 });
             var companies = new List<object>();
             foreach (Company co in e.Companies.Values)
@@ -201,6 +205,9 @@ namespace WorldSim.Core.Persistence
                     LastNetIncome = (long)D(a[10]), FoodMet = (float)D(a[11]), GoodsMet = (float)D(a[12]),
                     ServicesMet = (float)D(a[13]), SchoolDays = I(a[14]),
                 };
+                if (a.Count > 15) c.TenureDays = I(a[15]);
+                if (a.Count > 16 && a[16] is IDictionary<string, object> rel)
+                    foreach (var kv in rel) c.AddAffinity(int.Parse(kv.Key, CultureInfo.InvariantCulture), (float)D(kv.Value));
                 e.Citizens.Add(c.Id, c);
                 e.MoveIn(c, I(a[3]));
             }
@@ -227,6 +234,37 @@ namespace WorldSim.Core.Persistence
                 foreach (object x in (IList<object>)d["techs"]) co.AdoptedTechs.Add((string)x);
                 e.Companies.Add(bid, co);
             }
+        }
+
+        private static object Relations(Citizen c)
+        {
+            if (c.Relations == null || c.Relations.Count == 0) return null;
+            var d = new Dictionary<string, object>();
+            foreach (var kv in c.Relations) d[kv.Key.ToString(CultureInfo.InvariantCulture)] = (double)kv.Value;
+            return d;
+        }
+
+        private static Dictionary<string, object> Player(People.PlayerState p) => new Dictionary<string, object>
+        {
+            ["citizen"] = p.CitizenId, ["x"] = (double)p.X, ["z"] = (double)p.Z, ["heading"] = (double)p.Heading,
+            ["inside"] = p.InsideBuildingId, ["roomX"] = (double)p.RoomX, ["roomZ"] = (double)p.RoomZ,
+            ["activity"] = p.Activity.ToString(), ["hunger"] = (double)p.Hunger, ["energy"] = (double)p.Energy,
+            ["pantry"] = p.Pantry, ["goods"] = p.GoodsOwned, ["worked"] = (double)p.WorkedHours, ["absence"] = p.AbsenceDays,
+            ["study"] = p.StudyHours, ["travelTo"] = p.TravelTo, ["arrive"] = p.TravelArrive,
+        };
+
+        private static void LoadPlayer(WorldState w, IDictionary<string, object> o)
+        {
+            People.PlayerState p = w.Player;
+            p.CitizenId = o.GetInt("citizen");
+            if (p.CitizenId != 0 && !w.Economy.Citizens.ContainsKey(p.CitizenId)) throw new FormatException("操作中の人物がセーブデータにいません");
+            p.X = (float)o.GetDouble("x"); p.Z = (float)o.GetDouble("z"); p.Heading = (float)o.GetDouble("heading");
+            p.InsideBuildingId = o.GetInt("inside"); p.RoomX = (float)o.GetDouble("roomX"); p.RoomZ = (float)o.GetDouble("roomZ");
+            p.Activity = (People.AvatarActivity)Enum.Parse(typeof(People.AvatarActivity), o.GetString("activity", "Idle"));
+            p.Hunger = (float)o.GetDouble("hunger"); p.Energy = (float)o.GetDouble("energy");
+            p.Pantry = o.GetDouble("pantry"); p.GoodsOwned = o.GetDouble("goods");
+            p.WorkedHours = (float)o.GetDouble("worked"); p.AbsenceDays = o.GetInt("absence"); p.StudyHours = o.GetDouble("study");
+            p.TravelTo = o.GetInt("travelTo"); p.TravelArrive = o.GetDouble("arrive");
         }
 
         // ------------------------------------------------------------------ environment, events

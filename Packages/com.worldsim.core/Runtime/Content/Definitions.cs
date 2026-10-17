@@ -104,6 +104,28 @@ namespace WorldSim.Core.Content
         }
     }
 
+    /// <summary>A usable object inside a room (rectangle in room metres).</summary>
+    public sealed class FixtureDef
+    {
+        /// <summary>bed, fridge, sofa, counter, workstation, jobboard, classroom.</summary>
+        public string Type;
+        public string Label;
+        public float X, Z, W = 1, D = 1;
+    }
+
+    /// <summary>
+    /// The inside of a building type: one room with a door and fixtures. Matched by building id
+    /// first, then by category. Stage 1 of building interiors (later: modular rooms).
+    /// </summary>
+    public sealed class InteriorDef
+    {
+        public string Id;
+        public string[] For = Array.Empty<string>();
+        public float Width = 10, Depth = 8;
+        public float DoorX = 5, DoorZ;
+        public readonly List<FixtureDef> Fixtures = new List<FixtureDef>();
+    }
+
     internal static class EnumParse
     {
         public static T Parse<T>(string value, string context) where T : struct

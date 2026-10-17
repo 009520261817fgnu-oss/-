@@ -41,6 +41,8 @@ namespace WorldSim.Core.Economy
         Preparedness,
         Dividends,
         Benefit,
+        Tuition,
+        Moving,
     }
 
     /// <summary>Single path for every money movement; keeps per-day totals by flow for analysis.</summary>

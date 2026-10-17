@@ -26,6 +26,25 @@ namespace WorldSim.Core.Economy
         public float FoodMet = 1f, GoodsMet = 1f, ServicesMet = 1f;
         /// <summary>Days the student has spent at school (for education level at 18).</summary>
         public int SchoolDays;
+        /// <summary>Days worked at the current employer; every half year is a promotion step.</summary>
+        public int TenureDays;
+        /// <summary>Closeness (0..1) to other residents, only for people this one has interacted with.</summary>
+        public SortedDictionary<int, float> Relations;
+
+        public const int DaysPerPromotion = 180;
+        public const int MaxPromotions = 3;
+        /// <summary>Promotion level 0..3 from tenure.</summary>
+        public int Level => Math.Min(MaxPromotions, TenureDays / DaysPerPromotion);
+        /// <summary>Pay multiplier from promotions (+4% per level).</summary>
+        public double WageFactor => 1 + 0.04 * Level;
+
+        public float Affinity(int other) => Relations != null && Relations.TryGetValue(other, out float v) ? v : 0f;
+
+        public void AddAffinity(int other, float delta)
+        {
+            Relations ??= new SortedDictionary<int, float>();
+            Relations[other] = Math.Max(0f, Math.Min(1f, Affinity(other) + delta));
+        }
 
         public int AgeYears(long today) => (int)((today - BirthDay) / Simulation.SimClock.DaysPerYear);
         public bool IsWorkingAge(long today) { int a = AgeYears(today); return a >= 18 && a < 65; }

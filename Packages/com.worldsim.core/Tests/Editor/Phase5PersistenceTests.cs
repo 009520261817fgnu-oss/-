@@ -56,7 +56,7 @@ namespace WorldSim.Core.Tests
         {
             Assert.Throws<FormatException>(() => SaveSystem.Load(TestContent.Load(), "{\"format\":\"other\"}"));
             string json = SaveSystem.Save(Played(2, 1));
-            Assert.Throws<FormatException>(() => SaveSystem.Load(TestContent.Load(), json.Replace("\"version\":1", "\"version\":99")));
+            Assert.Throws<FormatException>(() => SaveSystem.Load(TestContent.Load(), json.Replace($"\"version\":{SaveSystem.Version}", "\"version\":99")));
             Assert.Throws<FormatException>(() => SaveSystem.Load(TestContent.Load(), json.Replace("\"factory\"", "\"spaceport\"")));
         }
 
